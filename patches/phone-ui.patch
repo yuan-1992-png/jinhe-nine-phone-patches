@@ -1,0 +1,709 @@
+diff --git a/phone-ui.js b/phone-ui.js
+index 5840430..8f17b5c 100644
+--- a/phone-ui.js
++++ b/phone-ui.js
+@@ -2365 +2365,2 @@ function imageDimensions(config,kind) {
+-  const frame=options.frame==='auto'?(imageSceneFrames[kind]||'square'):options.frame;
++  const autoFrame=config.provider==='comfy'&&kind==='wardrobe'?'square':imageSceneFrames[kind]||'square';
++  const frame=options.frame==='auto'?autoFrame:options.frame;
+@@ -2455,0 +2457 @@ function imageOptionsPanel(config,kind,shot=false) {
++  if (config.provider==='baibai') return '<p class="hint">使用柏宝绘当前的 ComfyUI 工作流和画幅。</p>';
+@@ -2456,0 +2459 @@ function imageOptionsPanel(config,kind,shot=false) {
++  const comfy=provider==='comfy';
+@@ -2484,2 +2487,2 @@ function imageOptionsPanel(config,kind,shot=false) {
+-    (diffusion||provider==='silicon'||imageHasQuality({provider,model})?'<details class="image-advanced"><summary>高级参数</summary><div class="stack">'+
+-    (diffusion?'<div class="pair">'+field('步数','image_steps',value.steps,'number','min="1" max="'+(provider==='novel'?50:150)+'" step="1"')+
++    (diffusion||comfy||provider==='silicon'||imageHasQuality({provider,model})?'<details class="image-advanced"><summary>高级参数</summary><div class="stack">'+
++    (diffusion||comfy?'<div class="pair">'+field('步数','image_steps',value.steps,'number','min="1" max="'+(provider==='novel'?50:150)+'" step="1"')+
+@@ -2491 +2494 @@ function imageOptionsPanel(config,kind,shot=false) {
+-    (provider==='sd'||provider==='silicon'?textarea('反向提示词','image_negative',value.negative):'')+
++    (comfy||provider==='sd'||provider==='silicon'?textarea('反向提示词','image_negative',value.negative):'')+
+@@ -2512,0 +2516 @@ function imageDimensionsForDisplay(config,kind) {
++    if (config.provider==='comfy' && config.comfy?.workflow && !/%(?:width|height)%/i.test(config.comfy.workflow)) return '尺寸由 ComfyUI 工作流决定。';
+@@ -2631,0 +2636,4 @@ function syncImageOptions(form) {
++    if (config.provider==='comfy') {
++      preview.textContent='本地 ComfyUI · '+imageDimensionsForDisplay(config,kind);
++      return;
++    }
+@@ -2645,2 +2653,3 @@ function imageFormPrompt(form) {
+-  return formValue(form,'prompt')||(form.id==='custom-look-form'?
+-    wardrobeImagePrompt(formValue(form,'title'),formValue(form,'description')):'');
++  const prompt=formValue(form,'prompt');
++  return form.id==='custom-look-form' ?
++    phoneGarmentPrompt(prompt||wardrobeImagePrompt(formValue(form,'title'),formValue(form,'description'))) : prompt;
+@@ -2740,0 +2750,3 @@ function bootImageSettings() {
++      if (imageFormConfig().provider==='comfy') {
++        await navigator.clipboard.writeText(imageFormPrompt(button.form));notify('正向词已复制');return;
++      }
+@@ -2766,0 +2779,279 @@ function bootImageSettings() {
++const phoneStatusbarTaskPrompts={"savedMode":"zh","templates":{"portrait":{"zh":"根据输入描述角色立绘。保留已知人物外貌、发型、衣着、姿势和情绪。用构图、镜头、光线及环境表现同一个瞬间。","en":"Write a character portrait prompt faithful to the supplied appearance, clothes, pose, and mood. Describe framing, lighting, and visible surroundings in one scene.","tags":"Create English comma-separated portrait tags. Keep known visual identity consistent. Include the subject count, framing, visible outfit, expression, lighting, and background."},"storyImage":{"zh":"把输入的正文整理成一张插图。选择行动最清楚的画面，保留场景物件、人物相对位置、光线和插图焦点。","en":"Turn the excerpt into one illustration. Choose a decisive visible moment and describe the setting, composition, spatial relations, and main on-screen action.","tags":"Write concise English image tags for one visible story moment. Include setting, shot framing, composition, action, and lighting."},"wardrobeItem":{"zh":"描述单品的品类、颜色、面料、裁剪和结构细节。取俯视的平铺商品照，只陈列指定衣物和配件，无人也无人台。","en":"Describe the clothing item by type, color, material, cut, and construction. Show it laid flat on an empty studio surface with no person or mannequin.","tags":"Describe the garment with English tags for item type, color, textile, cut and construction. Flat lay, clothes focus, clean background, garments only."},"wardrobeOutfit":{"zh":"把指定的各件服装并排平铺成套装商品照。逐件保留品类、材质和款式，按叠穿关系摆放。只陈列服装和配饰，无人也无人台。","en":"Arrange the specified outfit as a top-down product photograph. Keep every garment and accessory identifiable, with visible fabric and layering details. No person or mannequin.","tags":"Group the named garments and accessories in a single flat lay. Keep all colors, fabrics and layer order. Studio product photography, no humans."},"mapScene":{"zh":"选择单一镜头，描述场景真实可见的地点特征、地形、物件、材质、时间和光线。使用无人环境构图。","en":"Describe one unoccupied location from one coherent camera view. Include foreground, landmark, background, materials, and lighting.","tags":"One environment shot, empty location, English tags for landmark, ground, spatial depth, time and lighting. Use a scene perspective."},"itemOverview":{"zh":"把提供的物品在一张静物图中完整呈现。保留各件类型、数量和材料，按组陈列，营造清楚的光线与空间关系。","en":"Create a single still life of all listed objects. Keep visible types, quantities and materials, and group them on a clean surface with clear lighting.","tags":"Group every specified object in one still life. Preserve types, counts, materials and arrangement. Object focus, no people, clear lighting."}}};
++const phoneImageTaskLabels={
++  portrait:'角色立绘',storyImage:'正文插图',wardrobeItem:'衣柜单品',
++  wardrobeOutfit:'衣柜套装',mapScene:'地图场景',itemOverview:'物品总览',
++};
++const phoneImagePromptModes=[['zh','中文自然语言'],['en','英文自然语言'],['tags','英文标签']];
++const phoneGarmentTasks=['wardrobeItem','wardrobeOutfit'];
++const phoneWardrobeComposition='服装平铺商品照。俯拍桌面，各件衣物摊开放平，正面完整可见，干净背景。画面只陈列衣物与指定配饰，无人、无模特、无人台。';
++const phoneWardrobeNegative='person, human, mannequin, model wearing clothes, face, skin, limbs, hands, human silhouette';
++
++function phoneGarmentOptions(config) {
++  const addNegative=value=>[phoneWardrobeNegative,value].filter(Boolean).join(', ').slice(0,1500);
++  return {...config,generation:{...config.generation,negative:addNegative(config.generation?.negative)},
++    novel:{...config.novel,negativePrompt:addNegative(config.novel?.negativePrompt)}};
++}
++
++function phoneGarmentPrompt(prompt) {
++  return prompt.startsWith(phoneWardrobeComposition)?prompt:phoneWardrobeComposition+'\n'+prompt;
++}
++
++function phoneGarmentWorkflow(graph) {
++  const bodyFix=Object.entries(graph).filter(([,node])=>
++    node.class_type==='LoraLoaderModelOnly'&&
++    /(?:^|[\\/])女性身体修图\.safetensors$/i.test(node.inputs.lora_name||'')&&Array.isArray(node.inputs.model));
++  for (const [id,node] of bodyFix) {
++    for (const target of Object.values(graph)) {
++      for (const [field,link] of Object.entries(target.inputs)) {
++        if (Array.isArray(link)&&link[0]===id&&link[1]===0) target.inputs[field]=node.inputs.model.slice();
++      }
++    }
++    delete graph[id];
++  }
++  const negativeNodes=new Set();
++  for (const {class_type,inputs} of Object.values(graph)) {
++    const node=graph[inputs.negative?.[0]];
++    if (class_type==='KSampler'&&Number(inputs.cfg)>1&&node?.class_type==='CLIPTextEncode'&&
++        typeof node.inputs.text==='string'&&inputs.negative?.[0]!==inputs.positive?.[0]) negativeNodes.add(node);
++  }
++  for (const node of negativeNodes) {
++    if (!node.inputs.text.includes(phoneWardrobeNegative)) {
++      node.inputs.text=[phoneWardrobeNegative,node.inputs.text].filter(Boolean).join(', ');
++    }
++  }
++  return graph;
++}
++
++function phoneImageTaskPanel(kind) {
++  const wardrobe=kind==='wardrobe';
++  const tasks=wardrobe?phoneGarmentTasks:Object.keys(phoneImageTaskLabels);
++  const selected=wardrobe?'wardrobeOutfit':kind==='moment'?'storyImage':'portrait';
++  return '<details class="image-advanced"><summary>瑟瑟任务提示词</summary><div class="stack">'+
++    '<label>生图用途<select name="imagePromptTask">'+
++      tasks.map(id=>option(id,phoneImageTaskLabels[id],selected)).join('')+'</select></label>'+
++    '<label>提示词格式<select name="imagePromptMode">'+
++      phoneImagePromptModes.map(([id,name])=>option(id,name,phoneStatusbarTaskPrompts.savedMode)).join('')+'</select></label>'+
++    '<div class="buttons">'+btn('按预设整理','translate-image')+'</div></div></details>';
++}
++
++function phoneImageTaskSystem(task,mode) {
++  const templates=phoneStatusbarTaskPrompts.templates[task];
++  if (!templates) throw Error('请选择生图用途。');
++  const base=templates[mode]||templates.tags;
++  // The status bar's outfit task depicts a model. In the phone wardrobe it
++  // reuses the garment and layering rules with a product-only composition.
++  const source=task==='wardrobeOutfit'
++    ? base.replace(/^.*?重组出全身套装展示绘图主提示词。\s*/,'你是服饰商品图提示词工程师。根据已有衣物设计一张套装平铺商品照。\n\n')
++      .replace(/\n【模特一致性[^】]*】[\s\S]*?(?=\n【衣物重组】)/,'\n')
++      .replace(/^.*姿势须与衣物展示兼容.*\n?/m,'')
++      .replace(/全身商品展示构图：solo, full body；/,'从正上方俯拍各件衣物；')
++    :base;
++  const constraints=phoneGarmentTasks.includes(task)
++    ? '呈现真实衣物的平铺商品图。保留输入的品类、颜色、面料和搭配。画面只放衣物与指定配饰，排除人、模特、人台、手和皮肤。'
++    :task==='mapScene'?'保留环境、时间和光线，采用无人环境构图。':'保留输入中可确认的画面信息。';
++  const format=mode==='tags'?'用逗号分隔的英文生图标签':mode==='en'?'一句英文自然语言生图描述':'一句中文自然语言生图描述';
++  return [source,'【九号机输出约定】',constraints,
++    '只整理用户提供的单张画面。以本段为最终输出格式，返回单个 JSON 对象 {"prompt":"正向提示词"}。',
++    'prompt 写'+format+'，不带 Markdown、分析、段落定位、负面提示词或其他字段。'].join('\n\n');
++}
++
++function phoneImageTaskResult(result,task,mode) {
++  const text=String(result||'').trim().replace(/^```(?:json)?\s*|\s*```$/gi,'');
++  if (!text) throw Error('没有收到生图提示词。');
++  const wrapped=text.match(/<(PORTRAIT_JSON|WARDROBE_PROMPTS_JSON|ITEM_OVERVIEW_JSON)>([\s\S]+?)<\/\1>/i)?.[2];
++  const json=wrapped||text;
++  let parsed;
++  try {parsed=JSON.parse(json);}
++  catch {
++    const i=json.indexOf('{'),j=json.lastIndexOf('}');
++    if (i>=0&&j>i) {
++      try {parsed=JSON.parse(json.slice(i,j+1));} catch { /* A plain positive prompt is also accepted. */ }
++    }
++  }
++  const first=Array.isArray(parsed?.prompts)?parsed.prompts[0]:null;
++  const words=(Array.isArray(first?.tags)?first.tags:Array.isArray(parsed?.tags)?parsed.tags:[]);
++  let prompt=parsed?.prompt||first?.prompt||words.filter(w=>typeof w==='string').join(', ');
++  if (!prompt&&Array.isArray(parsed?.characters)) {
++    const characters=parsed.characters.filter(item=>item&&typeof item==='object');
++    prompt=[parsed.composition,...characters.flatMap(item=>[item.traits,item.outfit,item.action,item.interaction]),
++      parsed.entities,parsed.background].flat().filter(word=>typeof word==='string'&&word.trim()).join(mode==='zh'?'，':', ');
++  }
++  if (!prompt&&!parsed) {
++    const story=text.match(/image###\s*([\s\S]+?)###/i)?.[1];
++    prompt=story?story.split('\n').filter(line=>!/^\s*Character \d+ UC:/i.test(line))
++      .map(line=>line.replace(/^\s*(?:Scene Composition|Character \d+ Prompt):\s*/i,'')
++        .replace(/\|centers:[a-z]\d+\s*;?$/i,'').replace(/;$/,'').trim()).filter(Boolean).join(', ')
++      :text.startsWith('{')||text.startsWith('<')?'':text;
++  }
++  if (typeof prompt!=='string'||!prompt.trim()) throw Error('未读到正向提示词，可重试或手动填写。');
++  if (phoneGarmentTasks.includes(task)) {
++    const guard=mode==='zh'?'服装商品照，完整衣物平铺，纯净背景，无人物、无模特、无人体展示架。':
++      mode==='en'?'Garment product photography, flat lay, plain background, no person, no mannequin.':
++        'clothes focus, no humans, flat lay, simple background';
++    prompt=guard+' '+prompt.trim();
++  }
++  return prompt.trim();
++}
++
++const phoneJianxiaWorkflows={"wardrobe":"{\n  \"1\": {\n    \"class_type\": \"UNETLoader\",\n    \"inputs\": {\n      \"unet_name\": \"krea2文生模型\\\\Krea2-TurboNSWAIO_v10_fp8.safetensors\",\n      \"weight_dtype\": \"default\"\n    }\n  },\n  \"2\": {\n    \"class_type\": \"CLIPLoader\",\n    \"inputs\": {\n      \"clip_name\": \"qwen3vl_4b_fp8_scaled.safetensors\",\n      \"type\": \"krea2\",\n      \"device\": \"default\"\n    }\n  },\n  \"3\": {\n    \"class_type\": \"VAELoader\",\n    \"inputs\": {\n      \"vae_name\": \"qwen_image_vae.safetensors\"\n    }\n  },\n  \"4\": {\n    \"class_type\": \"CLIPTextEncode\",\n    \"inputs\": {\n      \"text\": \"%prompt%\",\n      \"clip\": [\n        \"2\",\n        0\n      ]\n    }\n  },\n  \"5\": {\n    \"class_type\": \"ConditioningZeroOut\",\n    \"inputs\": {\n      \"conditioning\": [\n        \"4\",\n        0\n      ]\n    }\n  },\n  \"6\": {\n    \"class_type\": \"EmptyLatentImage\",\n    \"inputs\": {\n      \"width\": \"%width%\",\n      \"height\": \"%height%\",\n      \"batch_size\": 1\n    }\n  },\n  \"7\": {\n    \"class_type\": \"KSampler\",\n    \"inputs\": {\n      \"seed\": \"%seed%\",\n      \"steps\": 10,\n      \"cfg\": 1,\n      \"sampler_name\": \"euler\",\n      \"scheduler\": \"simple\",\n      \"denoise\": 1,\n      \"model\": [\n        \"11\",\n        0\n      ],\n      \"positive\": [\n        \"4\",\n        0\n      ],\n      \"negative\": [\n        \"5\",\n        0\n      ],\n      \"latent_image\": [\n        \"6\",\n        0\n      ]\n    }\n  },\n  \"8\": {\n    \"class_type\": \"VAEDecode\",\n    \"inputs\": {\n      \"samples\": [\n        \"7\",\n        0\n      ],\n      \"vae\": [\n        \"3\",\n        0\n      ]\n    }\n  },\n  \"9\": {\n    \"class_type\": \"SaveImage\",\n    \"inputs\": {\n      \"images\": [\n        \"8\",\n        0\n      ],\n      \"filename_prefix\": \"Jinhe_wardrobe\"\n    }\n  },\n  \"11\": {\n    \"class_type\": \"LoraLoaderModelOnly\",\n    \"inputs\": {\n      \"lora_name\": \"krea2文生模型\\\\真实场景Garland_Photography_V1.safetensors\",\n      \"strength_model\": 0.85,\n      \"model\": [\n        \"1\",\n        0\n      ]\n    }\n  }\n}","selfie":"{\n  \"1\": {\n    \"class_type\": \"UNETLoader\",\n    \"inputs\": {\n      \"unet_name\": \"krea2文生模型\\\\Krea2-TurboNSWAIO_v10_fp8.safetensors\",\n      \"weight_dtype\": \"default\"\n    }\n  },\n  \"2\": {\n    \"class_type\": \"CLIPLoader\",\n    \"inputs\": {\n      \"clip_name\": \"qwen3vl_4b_fp8_scaled.safetensors\",\n      \"type\": \"krea2\",\n      \"device\": \"default\"\n    }\n  },\n  \"3\": {\n    \"class_type\": \"VAELoader\",\n    \"inputs\": {\n      \"vae_name\": \"qwen_image_vae.safetensors\"\n    }\n  },\n  \"4\": {\n    \"class_type\": \"CLIPTextEncode\",\n    \"inputs\": {\n      \"text\": \"%prompt%\",\n      \"clip\": [\n        \"2\",\n        0\n      ]\n    }\n  },\n  \"5\": {\n    \"class_type\": \"ConditioningZeroOut\",\n    \"inputs\": {\n      \"conditioning\": [\n        \"4\",\n        0\n      ]\n    }\n  },\n  \"6\": {\n    \"class_type\": \"EmptyLatentImage\",\n    \"inputs\": {\n      \"width\": \"%width%\",\n      \"height\": \"%height%\",\n      \"batch_size\": 1\n    }\n  },\n  \"7\": {\n    \"class_type\": \"KSampler\",\n    \"inputs\": {\n      \"seed\": \"%seed%\",\n      \"steps\": 10,\n      \"cfg\": 1,\n      \"sampler_name\": \"euler\",\n      \"scheduler\": \"simple\",\n      \"denoise\": 1,\n      \"model\": [\n        \"11\",\n        0\n      ],\n      \"positive\": [\n        \"4\",\n        0\n      ],\n      \"negative\": [\n        \"5\",\n        0\n      ],\n      \"latent_image\": [\n        \"6\",\n        0\n      ]\n    }\n  },\n  \"8\": {\n    \"class_type\": \"VAEDecode\",\n    \"inputs\": {\n      \"samples\": [\n        \"7\",\n        0\n      ],\n      \"vae\": [\n        \"3\",\n        0\n      ]\n    }\n  },\n  \"9\": {\n    \"class_type\": \"SaveImage\",\n    \"inputs\": {\n      \"images\": [\n        \"8\",\n        0\n      ],\n      \"filename_prefix\": \"Jinhe_selfie\"\n    }\n  },\n  \"10\": {\n    \"class_type\": \"LoraLoaderModelOnly\",\n    \"inputs\": {\n      \"lora_name\": \"krea2文生模型\\\\女性身体修图.safetensors\",\n      \"strength_model\": 0.4,\n      \"model\": [\n        \"1\",\n        0\n      ]\n    }\n  },\n  \"11\": {\n    \"class_type\": \"LoraLoaderModelOnly\",\n    \"inputs\": {\n      \"lora_name\": \"krea2文生模型\\\\真实场景Garland_Photography_V1.safetensors\",\n      \"strength_model\": 0.85,\n      \"model\": [\n        \"10\",\n        0\n      ]\n    }\n  }\n}"};
++const comfyDefaultBase='http://127.0.0.1:8188';
++const comfyWorkflowLimit=200000;
++const comfyKrea2Model='krea2文生模型\\Krea2-TurboNSWAIO_v10_fp8.safetensors';
++const comfyKrea2Workflow=JSON.stringify({
++  '1':{class_type:'UNETLoader',inputs:{unet_name:'%UNET_NAME%',weight_dtype:'default'}},
++  '2':{class_type:'CLIPLoader',inputs:{clip_name:'qwen3vl_4b_fp8_scaled.safetensors',type:'krea2',device:'default'}},
++  '3':{class_type:'VAELoader',inputs:{vae_name:'qwen_image_vae.safetensors'}},
++  '4':{class_type:'CLIPTextEncode',inputs:{text:'%prompt%',clip:['2',0]}},
++  '5':{class_type:'ConditioningZeroOut',inputs:{conditioning:['4',0]}},
++  '6':{class_type:'EmptyLatentImage',inputs:{width:'%width%',height:'%height%',batch_size:1}},
++  '7':{class_type:'KSampler',inputs:{seed:'%seed%',steps:10,cfg:1,sampler_name:'euler',scheduler:'simple',
++    denoise:1,model:['1',0],positive:['4',0],negative:['5',0],latent_image:['6',0]}},
++  '8':{class_type:'VAEDecode',inputs:{samples:['7',0],vae:['3',0]}},
++  '9':{class_type:'SaveImage',inputs:{images:['8',0],filename_prefix:'Jinhe_ComfyUI'}},
++},null,2);
++function safePhoneComfy(value) {
++  return {
++    base:typeof value?.base==='string'&&value.base.trim()?value.base.trim().slice(0,500):comfyDefaultBase,
++    model:typeof value?.model==='string'?value.model.trim().slice(0,240):'',
++    workflow:typeof value?.workflow==='string'?value.workflow.slice(0,comfyWorkflowLimit):'',
++    wardrobeWorkflow:typeof value?.wardrobeWorkflow==='string'?value.wardrobeWorkflow.slice(0,comfyWorkflowLimit):'',
++    selfieWorkflow:typeof value?.selfieWorkflow==='string'?value.selfieWorkflow.slice(0,comfyWorkflowLimit):'',
++  };
++}
++function phoneComfyWorkflow(raw) {
++  if (typeof raw!=='string'||raw.length>comfyWorkflowLimit) throw Error('请填写不超过 200 KB 的 API 工作流 JSON。');
++  let graph;
++  try {graph=JSON.parse(raw.trim().replace(/^\uFEFF/,''));}
++  catch {throw Error('ComfyUI 工作流 JSON 无法解析，占位符需要放在引号里。');}
++  const isObject=value=>value&&typeof value==='object'&&!Array.isArray(value);
++  if (isObject(graph?.workflow)) graph=graph.workflow;
++  if (isObject(graph?.prompt)) graph=graph.prompt;
++  if (!isObject(graph)||!Object.keys(graph).length||
++      !Object.values(graph).every(node=>isObject(node)&&typeof node.class_type==='string'&&isObject(node.inputs))) {
++    throw Error('请使用 ComfyUI 的 API 格式导出工作流，或从柏宝绘、瑟瑟状态栏复制工作流 JSON。');
++  }
++  return graph;
++}
++function renderPhoneComfyWorkflow(raw,prompt,config,kind) {
++  const graph=phoneComfyWorkflow(raw);
++  const {width,height}=imageDimensions(config,kind);
++  const opts=safeImageGeneration(config.generation);
++  const model=safePhoneComfy(config.comfy).model;
++  const sampler=opts.sampler||'euler';
++  const cfg=Number(opts.guidance)||7;
++  const replacements={
++    prompt,positive_prompt:prompt,nl:prompt,negative_prompt:opts.negative,width,height,
++    seed:opts.seed===''?Math.floor(Math.random()*2**53):imageNumber(opts.seed,'种子',0,Number.MAX_SAFE_INTEGER,true),
++    steps:Number(opts.steps)||24,cfg,scale:cfg,sampler,sampler_name:sampler,scheduler:'normal',
++    model,model_name:model,ckpt_name:model,unet_name:model,denoise:1,
++  };
++  let bound=false;
++  const fill=value=>{
++    if (Array.isArray(value)) return value.map(fill);
++    if (value&&typeof value==='object') return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,fill(v)]));
++    if (typeof value!=='string') return value;
++    const take=(marker,name)=>{
++      name=name.toLowerCase();
++      if (!Object.hasOwn(replacements,name)) throw Error('工作流未配置 '+marker+'，请在 JSON 里填实际值。');
++      if (['prompt','positive_prompt','nl'].includes(name)) bound=true;
++      if (replacements[name]===''&&['model','model_name','ckpt_name','unet_name'].includes(name)) {
++        throw Error('请选择 ComfyUI 模型文件，或在工作流里填入实际文件名。');
++      }
++      return replacements[name];
++    };
++    const exact=value.match(/^%([a-z][a-z0-9_]*)%$/i);
++    return exact?take(...exact):value.replace(/%([a-z][a-z0-9_]*)%/gi,take);
++  };
++  for (const node of Object.values(graph)) node.inputs=fill(node.inputs);
++  if (!bound) {
++    // Find the text node directly feeding positive conditioning in common API exports.
++    const inputs=new Set(Object.values(graph).map(node=>node.inputs.positive)
++      .filter(Array.isArray).map(([id])=>graph[id]?.inputs).filter(input=>typeof input?.text==='string'));
++    if (inputs.size!==1) throw Error('工作流的正向提示词位置不明确，请在对应节点中写 "%prompt%"。');
++    inputs.values().next().value.text=prompt;
++  }
++  return graph;
++}
++function phoneComfyBridge(action,config,workflow) {
++  if (typeof jinheBridge?.comfyRequest!=='function') throw Error('请在酒馆里打开九号机使用本地 ComfyUI。');
++  return jinheBridge.comfyRequest(action,config,workflow);
++}
++function phoneComfyModelRequests(graph) {
++  const loaders={
++    CheckpointLoaderSimple:['checkpoint','ckpt_name'],
++    CheckpointLoader:['checkpoint','ckpt_name'],
++    UNETLoader:['unet','unet_name'],
++    UnetLoaderGGUF:['gguf','unet_name'],
++    UnetLoaderGGUFAdvanced:['gguf','unet_name'],
++  };
++  return Object.values(graph).flatMap(node=>{
++    const loader=loaders[node.class_type];
++    return loader&&typeof node.inputs[loader[1]]==='string'?[{
++      node:node.class_type,type:loader[0],value:node.inputs[loader[1]],
++    }]:[];
++  });
++}
++function phoneComfyModels(items) {
++  return (Array.isArray(items)?items:[]).filter(item=>typeof item?.value==='string'&&item.value)
++    .map(item=>({...item,type:item.text?.startsWith('GGUF: ')?'gguf':item.text?.startsWith('UNet: ')?'unet':'checkpoint'}));
++}
++async function choosePhoneComfyWorkflow(comfy) {
++  if (comfy.workflow&&comfy.model!==comfyKrea2Model) return comfy.workflow;
++  const standard=await phoneComfyBridge('workflow',comfy);
++  if (comfy.model===comfyKrea2Model&&(!comfy.workflow||
++      JSON.stringify(phoneComfyWorkflow(comfy.workflow))===JSON.stringify(phoneComfyWorkflow(standard)))) {
++    return comfyKrea2Workflow;
++  }
++  return comfy.workflow||standard;
++}
++function preparePhoneComfyTest(graph) {
++  const nodes=Object.values(graph);
++  // Only resize a standard text-to-image latent. A graph that encodes an
++  // existing image or builds multiple latents may have coupled dimensions.
++  const latents=nodes.filter(node=>node.class_type==='EmptyLatentImage');
++  const samplers=nodes.filter(node=>node.class_type==='KSampler');
++  if (latents.length===1&&samplers.length===1&&graph[samplers[0].inputs.latent_image?.[0]]===latents[0]) {
++    const latent=latents[0].inputs, sampler=samplers[0].inputs;
++    const fixedSmall=typeof latent.width==='number'&&typeof latent.height==='number'&&latent.width*latent.height<=384*256;
++    if (!fixedSmall) {
++      latent.width=384;
++      latent.height=256;
++    }
++    latent.batch_size=1;
++    if (typeof sampler.steps==='number') sampler.steps=Math.min(sampler.steps,4);
++  }
++  for (const node of nodes.filter(node=>node.class_type==='SaveImage')) {
++    node.class_type='PreviewImage';
++    node.inputs={images:node.inputs.images};
++  }
++  return graph;
++}
++
++let phoneComfyTestRunning=false;
++async function requestPhoneComfyImage(config,prompt,kind) {
++  const comfy=safePhoneComfy(config.comfy);
++  const raw=kind==='wardrobe' ? comfy.wardrobeWorkflow||phoneJianxiaWorkflows.wardrobe :
++    ['selfie','portrait'].includes(kind) ? comfy.selfieWorkflow||phoneJianxiaWorkflows.selfie : await choosePhoneComfyWorkflow(comfy);
++  const testing=kind==='test';
++  const workflow=renderPhoneComfyWorkflow(raw,prompt,config,kind);
++  if (kind==='wardrobe') phoneGarmentWorkflow(workflow);
++  if (testing) preparePhoneComfyTest(workflow);
++  let result;
++  try { result=await phoneComfyBridge('generate',comfy,workflow); }
++  catch (error) {
++    if (/HTTP 500/.test(error.message)) {
++      const list=await phoneComfyBridge('models',comfy).then(phoneComfyModels,()=>[]);
++      const bad=phoneComfyModelRequests(workflow).find(model=>
++        list.some(item=>item.type===model.type)&&!list.some(item=>item.type===model.type&&item.value===model.value));
++      if (bad) throw Error(bad.node+' 无法加载「'+bad.value+'」。请为当前工作流重新读取并选择匹配的模型。');
++    }
++    throw error;
++  }
++  if (typeof result?.data!=='string'||!result.data) throw Error('ComfyUI 未返回可读取的图片。');
++  const blob=pictureBlob(decodeBytes(result.data)),bitmap=await createImageBitmap(blob);
++  try {
++    return {blob,generation:{provider:'comfy',prompt,method:'generate',width:bitmap.width,height:bitmap.height,
++      options:safeImageGeneration(config.generation),characters:[]}};
++  } finally {bitmap.close();}
++}
++
+@@ -2771 +3062 @@ const defaults = {
+-    generation:imageGenerationDefaults,
++    generation:imageGenerationDefaults, comfy:safePhoneComfy(),
+@@ -2793,0 +3085 @@ function privatePhoneApiSettings(value) {
++    if (kind==='image'&&Object.hasOwn(copy,'comfy')) copy.comfy=safePhoneComfy(copy.comfy);
+@@ -2797 +3089 @@ function privatePhoneApiSettings(value) {
+-      if(Object.hasOwn(copy,'forward')) copy.forward=['tavern','host','self'].includes(copy.forward)?copy.forward:'tavern';
++      if(Object.hasOwn(copy,'forward')) copy.forward=['tavern','host','self','relay'].includes(copy.forward)?copy.forward:'tavern';
+@@ -2799 +3091 @@ function privatePhoneApiSettings(value) {
+-      if(Object.hasOwn(copy,'presetName')) copy.presetName=typeof copy.presetName==='string'?copy.presetName.slice(0,80):'';
++      if(Object.hasOwn(copy,'presetName')) copy.presetName=typeof copy.presetName==='string'?copy.presetName.slice(0,255):'';
+@@ -3082 +3374,2 @@ function renderWallet() {
+-  return `<div class="pad"><div class="ledger-top"><small>当前余额</small><strong>${money(state.cash)}</strong><div class="totals"><span>已支出<b>${money(totals.spent)}</b></span><span>体力<b>${state.stamina}</b></span></div></div>
++  return `<div class="pad"><div class="ledger-top"><small>当前余额</small><strong>${money(state.cash)}</strong><div class="totals"><span>已支出<b>${money(totals.spent)}</b></span><span>腰力<b>${state.unlimitedStamina?'∞':state.stamina}</b></span></div></div>
++    ${state.paymentNotice?`<p class="feedback" role="status">${esc(state.paymentNotice)}</p>`:''}
+@@ -3188 +3481 @@ const chatProviders = {openai:'OpenAI 兼容',claude:'Claude 原生',gemini:'Gem
+-const imageProviders = {openai:'OpenAI 兼容生图',silicon:'硅基流动',sd:'SD WebUI / Forge',novel:'NovelAI'};
++const imageProviders = {openai:'OpenAI 兼容生图',silicon:'硅基流动',sd:'SD WebUI / Forge',novel:'NovelAI',baibai:'柏宝绘 · 本地 ComfyUI',comfy:'本地 ComfyUI（独立）'};
+@@ -3200 +3493 @@ function forwardStatusPanel(config) {
+-  const mode = config.presetMode || 'follow';
++  const mode = config.presetMode==='manual'&&!['host','relay'].includes(forward)?'follow':config.presetMode||'follow';
+@@ -3202 +3495 @@ function forwardStatusPanel(config) {
+-    `<label>出模型方式<select name="forward">${Object.entries({tavern:'酒馆主模型（推荐）',host:'酒馆后端转发',self:'九号机自填接口（浏览器直连）'})
++    `<label>出模型方式<select name="forward">${Object.entries({tavern:'酒馆主模型（推荐）',host:'酒馆后端转发（沿用酒馆连接）',relay:'九号机自填接口（后端转发）',self:'九号机自填接口（浏览器直连）'})
+@@ -3205,0 +3499 @@ function forwardStatusPanel(config) {
++      forward==='relay'?'通过酒馆后端请求下方填写的 OpenAI 兼容接口，地址、密钥和模型由九号机单独设置。':
+@@ -3208,2 +3502,2 @@ function forwardStatusPanel(config) {
+-  if (forward === 'host') {
+-    rows.push(`<label>预设参数<select name="presetMode">${Object.entries({follow:'沿用酒馆当前预设',pick:'选一套酒馆预设',manual:'用手填参数'})
++  if (globalThis.frameElement?.jinhePhoneBridge) {
++    rows.push(`<label>聊天预设<select name="presetMode">${Object.entries({follow:'沿用酒馆当前预设',pick:'选一套酒馆预设',...(forward==='relay'||forward==='host'?{manual:'手填采样参数，沿用当前提示词'}:{})})
+@@ -3216 +3510 @@ function forwardStatusPanel(config) {
+-    rows.push(`<p class="hint">连接状态：${status.ok?esc('可用 · '+status.source+' · '+status.model+
++    if (forward==='host') rows.push(`<p class="hint">连接状态：${status.ok?esc('可用 · '+status.source+' · '+status.model+
+@@ -3218 +3512 @@ function forwardStatusPanel(config) {
+-    rows.push(`<div class="buttons">${btn('刷新连接状态','forward-refresh')}</div>`);
++    if (forward==='host') rows.push(`<div class="buttons">${btn('刷新连接状态','forward-refresh')}</div>`);
+@@ -3227,0 +3522,3 @@ function settingsForm(kind, config) {
++  const baibai = !text && config.provider === 'baibai';
++  const comfy = !text && config.provider === 'comfy';
++  const comfyOptions = safePhoneComfy(config.comfy);
+@@ -3231,2 +3528,2 @@ function settingsForm(kind, config) {
+-  // 走酒馆主模型或后端转发时，地址/密钥/模型都由酒馆决定，这几项收起来免得误填。
+-  const selfFields = !text || forward === 'self';
++  // 酒馆已有连接和九号机自填连接各自保留设置。
++  const selfFields = !text || ['self','relay'].includes(forward);
+@@ -3235,4 +3532,16 @@ function settingsForm(kind, config) {
+-    ${selfFields ? `<label>接口类型<select name="provider">${Object.entries(providers).map(([id,name])=>option(id,name,config.provider)).join('')}</select></label>
+-    ${field('接口地址（Base URL）','base',config.base,'url',`placeholder="${esc(base)}" spellcheck="false"`)}
+-    ${field('API 密钥','key',config.key,'password','placeholder="本地无鉴权接口可留空" autocomplete="off"')}` : ''}
+-    ${!text && config.provider === 'sd' ? '' : selfFields || forward === 'host' && config.presetMode === 'manual' ? field('模型 ID','model',currentModel,'text',`list="models" placeholder="${esc(model || '填写接口支持的模型 ID')}" spellcheck="false"`) : ''}
++    ${selfFields ? `<label>接口类型<select name="provider">${Object.entries(providers).filter(([id])=>forward!=='relay'||id==='openai').map(([id,name])=>option(id,name,config.provider)).join('')}</select></label>
++    ${!baibai&&!comfy?field('接口地址（Base URL）','base',config.base,'url',`placeholder="${esc(base)}" spellcheck="false"`):''}
++    ${!baibai&&!comfy?field('API 密钥','key',config.key,'password','placeholder="本地无鉴权接口可留空" autocomplete="off"'):''}` : ''}
++    ${baibai || comfy || !text && config.provider === 'sd' ? '' : selfFields || forward === 'host' && config.presetMode === 'manual' ? field('模型 ID','model',currentModel,'text',`list="models" placeholder="${esc(model || '填写接口支持的模型 ID')}" spellcheck="false"`) : ''}
++    ${comfy?`
++      ${field('ComfyUI 地址','comfyBase',comfyOptions.base,'url','spellcheck="false"')}
++      ${field('模型文件','comfyModel',comfyOptions.model,'text','list="comfy-models" spellcheck="false" placeholder="默认工作流需要选择模型"')}
++      <datalist id="comfy-models"></datalist>
++      <label>API 工作流 JSON<textarea name="comfyWorkflow" rows="6" maxlength="200000" spellcheck="false" placeholder="留空使用酒馆默认工作流">${esc(comfyOptions.workflow)}</textarea></label>
++      <div class="buttons">${btn('测试连接','test-comfy')}${btn('读取模型','models-comfy')}${btn('载入默认工作流','workflow-comfy')}</div>
++      <details class="image-advanced"><summary>衣柜与自拍工作流</summary><div class="stack">
++        <p class="hint">留空使用内置剑侠 Krea2 工作流。衣柜用商品平铺，自拍保留人物 LoRA。</p>
++        <label>衣柜 API 工作流<textarea name="comfyWardrobeWorkflow" rows="5" maxlength="200000" spellcheck="false">${esc(comfyOptions.wardrobeWorkflow)}</textarea></label>
++        <label>自拍 API 工作流<textarea name="comfySelfieWorkflow" rows="5" maxlength="200000" spellcheck="false">${esc(comfyOptions.selfieWorkflow)}</textarea></label>
++      </div></details>
++      <p class="hint">可粘贴柏宝绘、瑟瑟状态栏或 ComfyUI 导出的 API 工作流。正向词占位符写成 "%prompt%" 或 "%positive_prompt%"。</p>`:''}
+@@ -3254,2 +3563,2 @@ function settingsForm(kind, config) {
+-    ${check('在当前浏览器记住密钥','remember',config.remember)}
+-    <p class="hint">${text ? '启用后，发送消息或刷新动态会向所填地址发出请求。测试连接会请求一段短回复。' : '点生成会向所填地址发送图片提示词，费用由该服务决定。可先用示例图试手感。'}</p>
++    ${baibai || comfy ? '' : check('在当前浏览器记住密钥','remember',config.remember)}
++    <p class="hint">${comfy ? '快速测试对常规文生图工作流用小图和最多 4 步。首次出图还要等模型加载。' : baibai ? '出图连接和工作流在柏宝绘的渠道设置里配置。' : text ? '发送消息或刷新动态会向所填地址发出请求。测试连接会请求一段短回复。' : '点生成会向所填地址发送图片提示词，费用由该服务决定。可先用示例图试手感。'}</p>
+@@ -3257 +3566 @@ function settingsForm(kind, config) {
+-      ${text ? (selfFields ? btn('拉取模型','models') : '') + btn('测试连接','test-chat') : btn('生成测试图','test-image')}</div>
++      ${text ? (selfFields ? btn('拉取模型','models') : '') + btn('测试连接','test-chat') : (baibai ? btn('检查渠道','test-baibai') : '') + btn(comfy?'快速测试图':'生成测试图','test-image')}</div>
+@@ -3259 +3568 @@ function settingsForm(kind, config) {
+-    <p class="hint">${selfFields?'接口需允许浏览器网页直连。若显示拦截，可换允许跨域的接口地址或自己的转发服务。':'选定酒馆主模型或后端转发时，地址与密钥沿用酒馆里已经配好的那一份。'}</p>
++    <p class="hint">${comfy?'工作流里的固定参数照常使用，占位符才读取九号机设置。':baibai?'请在柏宝绘选中 ComfyUI 作为当前出图渠道。':forward==='relay'?'后端转发支持不允许网页跨域的 OpenAI 兼容接口。':selfFields?'直连要求接口允许浏览器跨域。':'沿用酒馆已配置的连接。'}</p>
+@@ -3262,0 +3572 @@ const chatSettingsDrafts = new WeakMap();
++const imageSettingsDrafts = new WeakMap();
+@@ -3271 +3581 @@ function getConfig(form) {
+-  const remember = form.elements.remember.checked;
++  const remember = form.elements.remember?.checked===true;
+@@ -3276 +3586 @@ function getConfig(form) {
+-    return {provider:pick('provider','openai'),base:pick('base'),key:pick('key'),model:pick('model'),
++    return {provider:pick('forward','tavern')==='relay'?'openai':pick('provider','openai'),base:pick('base'),key:pick('key'),model:pick('model'),
+@@ -3284 +3594,5 @@ function getConfig(form) {
+-  return {provider,base,key,model,remember,style:formValue(form,'style'),auto:form.elements.auto.checked,
++  const comfy=form.elements.comfyBase?safePhoneComfy({base:formValue(form,'comfyBase'),
++    model:formValue(form,'comfyModel'),workflow:formValue(form,'comfyWorkflow'),
++    wardrobeWorkflow:formValue(form,'comfyWardrobeWorkflow'),selfieWorkflow:formValue(form,'comfySelfieWorkflow')}):
++    safePhoneComfy(imageSettingsDrafts.get(form)?.comfy||settings.image.comfy);
++  return {provider,base,key,model,remember,comfy,style:formValue(form,'style'),auto:form.elements.auto.checked,
+@@ -3657,5 +3971,10 @@ async function translateImage(button) {
+-  const form = button.form, field = form.elements.prompt, initial = field.value;
+-  const message = form.querySelector('#image-status'), config = {...settings.chat};
+-  if (!initial.trim()) return;
+-  const buttons = [...form.querySelectorAll('button')];
+-  buttons.forEach(item=>item.disabled=true);
++  const form=button.form,field=form.elements.prompt,wardrobe=form.id==='custom-look-form';
++  const message=form.querySelector(wardrobe?'#custom-look-status':'#image-status');
++  const task=formValue(form,'imagePromptTask')||(wardrobe?'wardrobeOutfit':'portrait');
++  const mode=formValue(form,'imagePromptMode')||'en';
++  const title=formValue(form,'title'),description=formValue(form,'description');
++  const initial=field.value.trim()||(wardrobe&&description?[title,description].filter(Boolean).join('。'):'');
++  if (!initial) {message.textContent='请先填写画面或衣物描述。';return;}
++  const buttons=[...form.querySelectorAll('button')].map(item=>[item,item.disabled]);
++  buttons.forEach(([item])=>{item.disabled=true;});
++  const readOnly=field.readOnly;
+@@ -3663 +3982 @@ async function translateImage(button) {
+-  message.textContent='正在请求聊天模型整理提示词…';
++  message.textContent='正在按「'+phoneImageTaskLabels[task]+'」整理提示词…';
+@@ -3665,4 +3984,5 @@ async function translateImage(button) {
+-    const result = await requestPhoneChat({...config,model:config.promptModel||config.model},
+-      '把用户描述整理为英文生图提示词。保留成人日常穿搭、地点、镜头与光线，只返回提示词。',
+-      [{role:'user',content:initial}]);
+-    field.value=result.slice(0,1500);
++    const config=settings.chat;
++    const result=await requestPhoneChat({...config,model:config.promptModel||config.model},
++      phoneImageTaskSystem(task,mode),[{role:'user',content:initial}]);
++    if (!form.isConnected) return;
++    field.value=phoneImageTaskResult(result,task,mode).slice(0,field.maxLength>0?field.maxLength:2200);
+@@ -3670,3 +3990,3 @@ async function translateImage(button) {
+-    message.textContent='提示词已更新，可以修改后再生成。';
+-  } catch (error) {message.textContent=error.message;}
+-  finally {field.readOnly=false;buttons.forEach(item=>item.disabled=false);}
++    message.textContent='提示词已整理，可以修改后再生成。';
++  } catch(error) {message.textContent=error.message;}
++  finally {field.readOnly=readOnly;buttons.forEach(([item,disabled])=>{item.disabled=disabled;});}
+@@ -3751,0 +4072,4 @@ const actions = {
++  'test-comfy': (_,button) => handleNetworkButton(button,'comfy-ping'),
++  'models-comfy': (_,button) => handleNetworkButton(button,'comfy-models'),
++  'workflow-comfy': (_,button) => handleNetworkButton(button,'comfy-workflow'),
++  'test-baibai': (_,button) => handleNetworkButton(button,'baibai'),
+@@ -3795 +4119,3 @@ document.addEventListener('change', event => {
+-      $('settings-form').elements.provider.focus();
++      const nextForm=$('settings-form');
++      imageSettingsDrafts.set(nextForm,next);
++      nextForm.elements.provider.focus();
+@@ -3907 +4233,3 @@ async function listModels(config) {
+-  const data = await jsonResponse(await apiFetch(url,authHeaders(config)));
++  if (config.forward==='relay' && !jinheBridge?.proxyChatRequest) throw Error('请在酒馆里打开九号机使用后端转发。');
++  const data = config.forward==='relay'
++    ? await jinheBridge.proxyChatRequest('status',config) : await jsonResponse(await apiFetch(url,authHeaders(config)));
+@@ -4021,0 +4350,6 @@ function withNovelArtistTags(prompt,tags) {
++function requireBaiBaiBridge() {
++  if (typeof jinheBridge?.checkBaiBai!=='function' || typeof jinheBridge?.generateBaiBai!=='function') {
++    throw Error('请在安装了柏宝绘的酒馆中打开九号机。');
++  }
++  return jinheBridge;
++}
+@@ -4022,0 +4357,14 @@ async function requestImage(config,prompt,kind) {
++  if (kind==='wardrobe') {
++    prompt=phoneGarmentPrompt(prompt);
++    config=phoneGarmentOptions(config);
++  }
++  if (config.provider==='comfy') return requestPhoneComfyImage(config,prompt,kind);
++  if (config.provider==='baibai') {
++    const address=await requireBaiBaiBridge().generateBaiBai(prompt,kind==='wardrobe'?phoneWardrobeNegative:undefined);
++    if (typeof address!=='string'||!/^data:image\//i.test(address)) throw Error('柏宝绘未返回可读取的图片数据。');
++    const image=await downloadImage(address),bitmap=await createImageBitmap(image.blob);
++    try {
++      return {...image,generation:{provider:'baibai',prompt,method:'generate',width:bitmap.width,height:bitmap.height,
++        options:safeImageGeneration(config.generation),characters:[]}};
++    } finally {bitmap.close();}
++  }
+@@ -4059,2 +4407,11 @@ function saveSettings(form) {
+-  if ((directChat || kind==='image') && config.base) parseBase(config);
+-  if ((directChat && config.live) || (kind==='image' && config.auto)) {
++  const relayChat=kind==='chat' && config.forward==='relay';
++  if (relayChat && !config.base) throw Error('请先填写九号机的接口地址。');
++  if (kind==='chat' && config.presetMode==='pick' && !config.presetName) throw Error('请先选一套酒馆预设。');
++  if ((directChat || relayChat || kind==='image') && config.base) parseBase(config);
++  if (kind==='image'&&config.provider==='comfy') {
++    parseBase({base:config.comfy.base});
++    for (const workflow of [config.comfy.workflow,config.comfy.wardrobeWorkflow,config.comfy.selfieWorkflow]) {
++      if (workflow) phoneComfyWorkflow(workflow);
++    }
++  }
++  if (directChat || relayChat || (kind==='image' && config.auto && !['baibai','comfy'].includes(config.provider))) {
+@@ -4064,0 +4422 @@ function saveSettings(form) {
++  if (kind==='chat') jinheBridge?.setChatConfig?.({...config});
+@@ -4072,0 +4431,3 @@ async function handleNetworkButton(button,action) {
++  const quickTest=action==='image'&&config.provider==='comfy';
++  if (quickTest&&phoneComfyTestRunning) {apiStatus(kind,'正在等待本次测试，请稍候。',form);return;}
++  if (quickTest) phoneComfyTestRunning=true;
+@@ -4074 +4435 @@ async function handleNetworkButton(button,action) {
+-  apiStatus(kind,action==='image'?'正在生成测试图…':'正在请求接口…',form);
++  apiStatus(kind,quickTest?'正在生成快速测试图… 首次可能需要加载模型。':action==='image'?'正在生成测试图…':'正在请求接口…',form);
+@@ -4080,0 +4442,24 @@ async function handleNetworkButton(button,action) {
++    } else if (action==='comfy-ping') {
++      await phoneComfyBridge('ping',config.comfy);
++      apiStatus(kind,'本地 ComfyUI 已连通。',form);
++    } else if (action==='comfy-models') {
++      const result=await phoneComfyBridge('models',config.comfy);
++      const raw=await choosePhoneComfyWorkflow(config.comfy);
++      const types=new Set(phoneComfyModelRequests(phoneComfyWorkflow(raw)).map(model=>model.type));
++      const candidates=phoneComfyModels(result).filter(item=>!types.size||types.has(item.type));
++      if (!candidates.length) throw Error('本地服务没有返回与当前工作流节点匹配的模型。');
++      form.querySelector('#comfy-models').replaceChildren(...candidates.map(item=>new Option(item.text||item.value,item.value)));
++      apiStatus(kind,'找到 '+candidates.length+' 个匹配模型。在模型文件一栏选择。',form);
++    } else if (action==='comfy-krea') {
++      form.elements.comfyWorkflow.value=comfyKrea2Workflow;
++      form.elements.comfyModel.value=comfyKrea2Model;
++      apiStatus(kind,'已载入本机 Krea2 工作流及模型。',form);
++    } else if (action==='comfy-workflow') {
++      const raw=await phoneComfyBridge('workflow',config.comfy);
++      phoneComfyWorkflow(raw);
++      form.elements.comfyWorkflow.value=raw;
++      if (form.elements.comfyModel.value===comfyKrea2Model) form.elements.comfyModel.value='';
++      apiStatus(kind,'已载入酒馆默认 Checkpoint 工作流。请选择匹配的模型。',form);
++    } else if (action==='baibai') {
++      const {model}=requireBaiBaiBridge().checkBaiBai();
++      apiStatus(kind,model?'柏宝绘的 ComfyUI 渠道已配置 · '+model:'柏宝绘的 ComfyUI 渠道已配置。',form);
+@@ -4082,13 +4467,7 @@ async function handleNetworkButton(button,action) {
+-      // 按当前转发方式测：酒馆主模型 / 后端转发 / 自填接口，三条路都要真跑一次。
+-      const route = config.forward || 'tavern';
+-      if (route === 'self') {
+-        const reply=await requestChat(config,'只用一句简短的话回答。',[{role:'user',content:'你好，这是一条连接测试。'}]);
+-        apiStatus(kind,`自填接口连接成功 · ${Math.round(performance.now()-started)} ms\n${reply.slice(0,180)}`,form);
+-      } else if (route === 'host') {
+-        const reply=await hostForwardChat('只用一句简短的话回答。',[{role:'user',content:'你好，这是一条连接测试。'}],await hostPresetParams(config));
+-        apiStatus(kind,`酒馆后端转发成功 · ${Math.round(performance.now()-started)} ms\n${reply.slice(0,180)}`,form);
+-      } else {
+-        if (!jinheBridge) throw Error('酒馆主模型要在酒馆里打开九号机才能测。');
+-        const reply=await jinheBridge.generate('只用一句简短的话回答。',[{role:'user',content:'你好，这是一条连接测试。'}]);
+-        apiStatus(kind,`酒馆主模型连接成功 · ${Math.round(performance.now()-started)} ms\n${String(reply).slice(0,180)}`,form);
+-      }
++      const route=config.forward||'tavern';
++      const prompt='只用一句简短的话回答。';
++      const messages=[{role:'user',content:'你好，这是一条连接测试。'}];
++      if (!jinheBridge&&route!=='self') throw Error('请在酒馆里打开九号机，再测试酒馆连接。');
++      const reply=jinheBridge?await jinheBridge.generate(prompt,messages,config):await requestChat(config,prompt,messages);
++      const labels={tavern:'酒馆主模型',host:'酒馆后端转发',relay:'九号机独立接口后端转发',self:'浏览器直连'};
++      apiStatus(kind,labels[route]+'连接成功 · '+Math.round(performance.now()-started)+' ms\n'+reply.slice(0,180),form);
+@@ -4106 +4485,4 @@ async function handleNetworkButton(button,action) {
+-  finally {button.disabled=false;}
++  finally {
++    if (quickTest) phoneComfyTestRunning=false;
++    button.disabled=false;
++  }
+@@ -4408 +4790 @@ function showCustomLookEditor(mode) {
+-    ${upload?'':`<label>自定义提示词（可选）<textarea name="prompt" rows="3" maxlength="2200" placeholder="留空时使用上面的衣服名称和款式"></textarea></label>${imageOptionsPanel(settings.image,'wardrobe',{textOnly:true})}`}
++    ${upload?'':`<label>自定义提示词（可选）<textarea name="prompt" rows="3" maxlength="2200" placeholder="留空时使用上面的衣服名称和款式"></textarea></label>${phoneImageTaskPanel('wardrobe')}${imageOptionsPanel(settings.image,'wardrobe',{textOnly:true})}`}
+@@ -4457 +4839 @@ async function generateCustomLook(button) {
+-  const prompt=formValue(form,'prompt')||wardrobeImagePrompt(title,description);
++  let prompt=formValue(form,'prompt')||wardrobeImagePrompt(title,description);
+@@ -4841 +5223 @@ function editPlayer() {
+-    range('体力','stamina',state.stamina)+btn('体力恢复至 100','quick-edit',{key:'stamina',value:100})+
++    (state.unlimitedStamina?'<p class="hint">腰力 ∞</p>':range('体力','stamina',state.stamina)+btn('体力恢复至 100','quick-edit',{key:'stamina',value:100}))+
+@@ -5007 +5389 @@ async function submitEdit(form) {
+-    const next={cash:Number(formValue(form,'cash')),stamina:Number(formValue(form,'stamina')),
++    const next={cash:Number(formValue(form,'cash')),...(state.unlimitedStamina?{}:{stamina:Number(formValue(form,'stamina'))}),
+@@ -5227 +5609 @@ function applyHostSnapshot(snapshot) {
+-  for (const key of ['knownIds','presentIds','friends','affinity','cash','stamina','items','property','properties','returnProfile','ledger']) state[key]=copy[key];
++  for (const key of ['knownIds','presentIds','friends','affinity','cash','stamina','unlimitedStamina','items','property','properties','returnProfile','ledger','paymentNotice']) state[key]=copy[key];
+@@ -5301 +5683,8 @@ async function payInHost(id,kind,amount,debtDue,button) {
+-  if (button) button.disabled=true;
++  const details=JSON.stringify([id,kind,amount,debtDue]);
++  let requestId=button?.dataset.paymentDetails===details?button.dataset.paymentRequestId:'';
++  if (!requestId) requestId=uid().replace(/-/g,'').slice(0,32);
++  if (button) {
++    button.dataset.paymentDetails=details;
++    button.dataset.paymentRequestId=requestId;
++    button.disabled=true;
++  }
+@@ -5303 +5692 @@ async function payInHost(id,kind,amount,debtDue,button) {
+-    const data=await hostWrite({type:'pay',id,kind,amount,debtDue,requestId:uid().replace(/-/g,'').slice(0,32)});
++    const data=await hostWrite({type:'pay',id,kind,amount,debtDue,requestId});
+@@ -5310,4 +5698,0 @@ async function payInHost(id,kind,amount,debtDue,button) {
+-// 九号机的三条出模型路径，按设置里的 forward 分派：
+-//   tavern  —— 交给酒馆主模型（generateRaw，原有方式，会受主聊天生成状态影响）
+-//   host    —— 走酒馆后端转发，用酒馆已配好的连接与密钥
+-//   self    —— 九号机自填接口，浏览器直连
+@@ -5316 +5701 @@ function phoneChatRoute() {
+-  if (forward === 'host' || forward === 'self') return forward;
++  if (['host','self','relay'].includes(forward)) return forward;
+@@ -5327 +5711,0 @@ async function requestPhoneChat(config, system, messages) {
+-  if (route === 'self') return requestChat(config, system, messages);
+@@ -5328,0 +5713 @@ async function requestPhoneChat(config, system, messages) {
++  if (route === 'relay') throw Error('请在酒馆里打开九号机使用后端转发。');
+@@ -5526,0 +5912,29 @@ function bootHostClient() {
++function jinheApplySeseLines(nine,additions) {
++  const chats = nine.chats ||= {};
++  const changed = [];
++  for (const {id,lines} of additions) {
++    const existing = Array.isArray(chats[id])?chats[id]:[];
++    const ids = new Set(existing.map(line=>line.id));
++    const appended = lines.filter(line=>!ids.has(line.id));
++    if (!appended.length) continue;
++    changed.push([id,chats[id]]);
++    chats[id] = [...existing,...appended].sort((a,b)=>(a.at||0)-(b.at||0));
++  }
++  return changed;
++}
++window.importJinheSeseLines=additions=>{
++  const archiveState=archive[0];
++  if (!archiveState) return false;
++  const changed=jinheApplySeseLines(archiveState,additions);
++  if (!changed.length) return true;
++  if (!save()) {
++    for (const [id,lines] of changed) {
++      if (lines) archiveState.chats[id]=lines;
++      else delete archiveState.chats[id];
++    }
++    return false;
++  }
++  const focused=document.activeElement;
++  if (['contacts','chat'].includes(section)&&!$('modal').open&&!focused?.closest('form')) render();
++  return true;
++};
+@@ -6101 +6515 @@ function osHome() {
+-    '</strong><em>体力 '+state.stamina+' / 100</em></button></div>'+
++    '</strong><em>'+(state.unlimitedStamina?'腰力 ∞':'体力 '+state.stamina+' / 100')+'</em></button></div>'+
+@@ -6162 +6576,46 @@ function osContacts() {
+-function osMessageLine(line,p,index) {
++let osHistoryScope='';
++function osAskDeleteHistory(index) {
++  const id=activePerson;
++  const p=person(id);
++  const lines=state.chats[id];
++  if (section!=='chat'||!p||!lines?.length) return;
++  if (waits.has(opening+':chat:'+id)) {notify('请等当前回复完成后再管理记录。');return;}
++  const clear=index===undefined;
++  const line=clear?null:lines[Number(index)];
++  if (!clear&&!line) return;
++  const label=clear?'清空聊天记录':'删除消息';
++  const detail=clear?'清空与 '+esc(p.name)+' 的全部聊天记录？':'删除选中的这条消息？';
++  modal(label,'<p>'+detail+'</p><div class="buttons">'+btn('取消','close')+
++    btn(clear?'确认清空':'确认删除','os-delete-history-confirm',{},'primary')+'</div>',
++    {kind:'os-delete-history',id,opening,state,clear,line});
++}
++function osConfirmDeleteHistory() {
++  const context=modalContext;
++  if (context?.kind!=='os-delete-history'||context.state!==state||
++      context.opening!==opening||section!=='chat'||context.id!==activePerson) return;
++  const {id,clear,line}=context;
++  if (waits.has(opening+':chat:'+id)) {notify('请等当前回复完成后再管理记录。');return;}
++  const lines=state.chats[id];
++  if (!lines?.length) {closeModal();return;}
++  const index=clear?-1:lines.indexOf(line);
++  if (!clear&&index===-1) {closeModal();return;}
++  const discarded=clear?lines:[lines[index]];
++  state.chats[id]=clear?[]:lines.filter((_,i)=>i!==index);
++  if (!save()) {
++    state.chats[id]=lines;
++    notify('浏览器无法保存，聊天记录仍在。');
++    return;
++  }
++  let syncError=false;
++  try {
++    jinheBridge?.discardChatInbox?.(id,discarded.map(item=>item.id).filter(Boolean),clear);
++  } catch { syncError=true; }
++  const banner=$('os-banner');
++  if (banner?.dataset.id===id) banner.hidden=true;
++  const scrollTop=$('screen').scrollTop;
++  closeModal();
++  render();
++  if (!clear) $('screen').scrollTop=scrollTop;
++  notify(syncError?'聊天记录已删除，通知同步失败。':clear?'聊天记录已清空。':'消息已删除。');
++}
++function osMessageLine(line,p,index,managing) {
+@@ -6190 +6649,2 @@ function osMessageLine(line,p,index) {
+-    (line.failed?'<div class="os-message-status">尚未获答，可重新发送</div>':'')+'</div></div>';
++    (line.failed?'<div class="os-message-status">尚未获答，可重新发送</div>':'')+
++    (managing?'<div class="os-message-status">'+btn('删除','os-delete-history',{index})+'</div>':'')+'</div></div>';
+@@ -6199 +6659 @@ function osChat() {
+-  const scope=opening+':chat:'+p.id,lines=conversation(p.id);
++  const scope=opening+':chat:'+p.id,lines=conversation(p.id),managing=osHistoryScope===scope;
+@@ -6203,0 +6664,2 @@ function osChat() {
++    (lines.length||managing?btn(managing?'完成':'管理记录','os-manage-history'):'')+
++    (managing&&lines.length?btn('清空记录','os-clear-history'):'')+
+@@ -6212 +6674 @@ function osChat() {
+-    return divider+osMessageLine(line,p,index);
++    return divider+osMessageLine(line,p,index,managing);
+@@ -6513 +6975 @@ function openImageShot(context,prompt) {
+-    imageOptionsPanel(config,kind,{...context,originLabel:context.origin?'已选相册原图 · '+context.origin.title:''})+
++    phoneImageTaskPanel(kind)+imageOptionsPanel(config,kind,{...context,originLabel:context.origin?'已选相册原图 · '+context.origin.title:''})+
+@@ -6515 +6977 @@ function openImageShot(context,prompt) {
+-    (kind==='live-cover'?'生成并设为封面':'生成照片')+'</button>'+btn('英文提示词','translate-image')+
++    (kind==='live-cover'?'生成并设为封面':'生成照片')+'</button>'+
+@@ -6603,0 +7066,10 @@ function bootPhoneExperience() {
++    'os-manage-history':()=>{
++      const scope=opening+':chat:'+activePerson;
++      osHistoryScope=osHistoryScope===scope?'':scope;
++      const scrollTop=$('screen').scrollTop;
++      render();
++      $('screen').scrollTop=scrollTop;
++    },
++    'os-delete-history':({index})=>osAskDeleteHistory(index),
++    'os-clear-history':()=>osAskDeleteHistory(),
++    'os-delete-history-confirm':osConfirmDeleteHistory,

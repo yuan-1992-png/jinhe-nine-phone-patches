@@ -1,0 +1,71 @@
+diff --git a/zod.js b/zod.js
+index 360c998..8ac9433 100644
+--- a/zod.js
++++ b/zod.js
+@@ -272,0 +273,2 @@ try {
++const countyUnlimitedStamina=100;
++
+@@ -1079 +1081 @@ export function createCountySchema(z, presetPeople, countyOpeningProfile, county
+-      person: z.string().regex(/^girl_[a-z0-9_]+$/).optional(),
++      person: z.string().trim().min(1).max(100).optional(),
+@@ -1172 +1174 @@ export function createCountySchema(z, presetPeople, countyOpeningProfile, county
+-      stamina: ClampedNumber(0, 100, 100).describe('精力/腰力值 0-100'),
++      stamina: z.preprocess(()=>countyUnlimitedStamina,ClampedNumber(0, 100, 100)).describe('腰力固定为 100，界面显示 ∞'),
+@@ -1880,2 +1882,10 @@ function countyEconomy(state, before, request, turn, opening, remoteRecipients =
+-    const girl = kind === 'expense' ? undefined : person ? recipients.get(person) : onlyRecipient;
+-    if (kind !== 'expense' && !girl) return deny('收款对象未确认，未扣款');
++    let girl;
++    if (kind !== 'expense') {
++      girl = person ? recipients.get(person) : onlyRecipient;
++      if (!girl && person) {
++        const key = countyNameKey(person);
++        const matches = key ? [...recipients.values()].filter(entry => countyNameKey(entry.name) === key) : [];
++        if (matches.length === 1) girl = matches[0];
++      }
++      if (!girl) return deny('收款对象未确认，请使用在场收款对象的人物 ID。未扣款。');
++    }
+@@ -2000 +2010 @@ function countyPurchaseState(before, type) {
+-  const next = { ...before, player:{ ...before.player } };
++  const next = { ...before, player:{ ...before.player, stamina:countyUnlimitedStamina } };
+@@ -2348,3 +2357,0 @@ function allowedCountyCommand(command, state, people) {
+-  if (root === 'player' && section === 'stamina' && path.length === 2 && ['set', 'add'].includes(command.type)) {
+-    return typeof value === 'number' && Number.isFinite(value);
+-  }
+@@ -2599 +2606,2 @@ function countyTrustedCommand(command, trusted) {
+-      (path[0] === 'scene' && path[1] === 'county_name')) return false;
++      (path[0] === 'scene' && path[1] === 'county_name') ||
++      (path[0] === 'player' && (path.length === 1 || path[1] === 'stamina'))) return false;
+@@ -2758,0 +2767 @@ $(() => {
++    if (state?.player) state.player.stamina=countyUnlimitedStamina;
+@@ -2765 +2774 @@ $(() => {
+-      const player = { ...before.player };
++      const player = { ...before.player, stamina:countyUnlimitedStamina };
+@@ -2778 +2787 @@ $(() => {
+-    const migrated = migrateCast(before);
++    const migrated = migrateCast({...before,player:{...before.player,stamina:countyUnlimitedStamina}});
+@@ -2854 +2863 @@ $(() => {
+-      cash:state.player.cash,stamina:state.player.stamina,items:clone(state.player.items||[]),
++      cash:state.player.cash,stamina:countyUnlimitedStamina,unlimitedStamina:true,items:clone(state.player.items||[]),
+@@ -2856,0 +2866 @@ $(() => {
++      paymentNotice:receipt && receipt.turn===state.world_ledger?.turn && receipt.spent===0 ? receipt.reason||'' : '',
+@@ -2939,4 +2949,3 @@ $(() => {
+-    for (const [field,max] of [['cash',999999999999],['stamina',100]]) {
+-      if (!own(patch,field)) continue;
+-      if (!bounded(patch[field],max)) throw Error('玩家数值超出范围。');
+-      state.player[field]=patch[field];
++    if (own(patch,'cash')) {
++      if (!bounded(patch.cash,999999999999)) throw Error('玩家金额超出范围。');
++      state.player.cash=patch.cash;
+@@ -2984 +2993,3 @@ $(() => {
+-    if (!state.active_girls[id] || state.active_girls[id].present===false) throw Error('需要人物在场，原卡才受理付款。');
++    const present=state.active_girls[id] && state.active_girls[id].present!==false;
++    const friend=state.collection.roster[id]?.wechat_unlocked===true;
++    if (!present && (kind!=='gift'||!friend)) throw Error('收款人需在场，或已加微信后通过私聊收红包。');
+@@ -2987 +2998 @@ $(() => {
+-    countyEconomy(state,before,request,state.world_ledger?.turn??0,null);
++    countyEconomy(state,before,request,state.world_ledger?.turn??0,null,present?[]:[[id,girl]]);
+@@ -2994 +3005 @@ $(() => {
+-    savePerson(state,id,girl,true,state.collection.roster[id]?.wechat_unlocked===true);
++    savePerson(state,id,girl,Boolean(present),friend);
+@@ -3086,0 +3098 @@ $(() => {
++    state.player.stamina=countyUnlimitedStamina;

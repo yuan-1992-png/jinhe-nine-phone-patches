@@ -1,0 +1,376 @@
+diff --git a/phone-host.js b/phone-host.js
+index c1f504b..a114bcb 100644
+--- a/phone-host.js
++++ b/phone-host.js
+@@ -221,0 +222,176 @@ const hostDocument=hostPage.document;
++const jinheSeseCard = '金河县的精神小妹们v1.6.4 · 九号随身机.png';
++const jinheSesePrefix = 'jinhe_sese_';
++const jinheNinePrefix = 'jinhe_nine_';
++const jinheSharedName = name => typeof name === 'string'
++  ? name.normalize('NFKC').replace(/\s+/g,'').toLowerCase() : '';
++let jinheSeseBusy = false;
++let jinheSeseTimer = null;
++let jinheSesePendingFriends = null;
++let jinheSeseLastError = '';
++
++function jinheSesePlan(data,nine,sese,prior) {
++  const byName = new Map();
++  const chats = new Map();
++  const nineFriends = new Set(data.friends);
++  const seseFriends = new Set(sese.friends.map(jinheSharedName));
++  for (const id of new Set([...data.knownIds,...data.presentIds])) {
++    const name = data.people[id]?.name?.trim();
++    const key = jinheSharedName(name);
++    if (!key || name.length > 60) continue;
++    const overlap = byName.has(key);
++    byName.set(key,overlap?null:{id,name});
++  }
++  for (const chat of sese.conversations) {
++    const key = jinheSharedName(chat.name);
++    if (key) chats.set(key,chats.has(key)?null:chat);
++  }
++  const synced = new Set(prior);
++  const addToNine = [], nineLines = [], seseUpdates = [];
++  const nineDone = [], seseDone = [];
++  for (const [key,person] of byName) {
++    if (!person || chats.has(key)&&!chats.get(key)) continue;
++    const {id,name} = person;
++    const hasNine = nineFriends.has(id), hasSese = seseFriends.has(key);
++    const nineContact = 'contact:nine:'+id, seseContact = 'contact:sese:'+id;
++    const importFriend = hasSese&&!hasNine&&!synced.has(nineContact)&&nineFriends.size+addToNine.length<50;
++    const exportFriend = hasNine&&!hasSese&&!synced.has(seseContact);
++    if (importFriend) {addToNine.push(id);nineDone.push(nineContact);}
++    if (exportFriend) seseDone.push(seseContact);
++    if (hasNine&&hasSese) {nineDone.push(nineContact);seseDone.push(seseContact);}
++    if ((!hasNine&&!importFriend)||(!hasSese&&!exportFriend)) continue;
++
++    const left = Array.isArray(nine.chats[id])?nine.chats[id]:[], right = chats.get(key)?.messages||[];
++    const nineIds = new Set(left.map(line=>line.id)), seseIds = new Set(right.map(line=>line.id));
++    const toSese = [], toNine = [];
++    for (const line of left.slice(-250)) {
++      if (!line || line.failed || (line.kind&&line.kind!=='voice') ||
++          !['user','assistant'].includes(line.role) || typeof line.text!=='string' || !line.text.trim() ||
++          !Number.isFinite(line.at)) continue;
++      const native = typeof line.id==='string'&&line.id || JSON.stringify([line.role,line.at,line.text.slice(0,160)]);
++      if (native.startsWith(jinheSesePrefix)) continue;
++      const mirrored = jinheNinePrefix+native;
++      const token = 'line:sese:'+id+':'+mirrored;
++      if (synced.has(token)) continue;
++      if (!seseIds.has(mirrored)) {
++        toSese.push({id:mirrored,from:line.role==='user'?'me':name,type:line.kind||'text',
++          content:line.text.slice(0,4000),ts:line.at});
++        seseIds.add(mirrored);
++      }
++      seseDone.push(token);
++    }
++    for (const line of right) {
++      if (!line || typeof line.id!=='string' || !line.id || line.id.startsWith(jinheNinePrefix) ||
++          typeof line.content!=='string' || !line.content.trim() || !Number.isFinite(line.ts)) continue;
++      const self = line.from==='me';
++      if (!self&&jinheSharedName(line.from)!==key) continue;
++      const mirrored = jinheSesePrefix+line.id;
++      const token = 'line:nine:'+id+':'+mirrored;
++      if (synced.has(token)) continue;
++      if (!nineIds.has(mirrored)) {
++        toNine.push({id:mirrored,role:self?'user':'assistant',...(self?{}:{speaker:name}),
++          ...(line.type==='voice'?{kind:'voice'}:{}),text:line.content.slice(0,4000),at:line.ts});
++        nineIds.add(mirrored);
++      }
++      nineDone.push(token);
++    }
++    if (toNine.length) nineLines.push({id,lines:toNine});
++    if (exportFriend||toSese.length) seseUpdates.push({name,addFriend:exportFriend,messages:toSese});
++  }
++  return {addToNine,nineLines,seseUpdates,nineDone,seseDone};
++}
++
++function jinheApplySeseLines(nine,additions) {
++  const chats = nine.chats ||= {};
++  const changed = [];
++  for (const {id,lines} of additions) {
++    const existing = Array.isArray(chats[id])?chats[id]:[];
++    const ids = new Set(existing.map(line=>line.id));
++    const appended = lines.filter(line=>!ids.has(line.id));
++    if (!appended.length) continue;
++    changed.push([id,chats[id]]);
++    chats[id] = [...existing,...appended].sort((a,b)=>(a.at||0)-(b.at||0));
++  }
++  return changed;
++}
++
++async function jinheSaveSeseFriends(scope,ids) {
++  return queuePhoneWrite(async()=>{
++    const active = phoneStoryScope();
++    if (disposed||generationActive||active?.chat!==scope.chat||active?.character!==scope.character) return false;
++    const ctx = SillyTavern.getContext(), snapshot = rawSnapshot();
++    if (snapshot.mvu.isDuringExtraAnalysis?.()||typeof ctx.saveChat!=='function') return false;
++    const data = snapshot.kernel.project(snapshot.data.stat_data);
++    const friends = [...new Set([...data.friends,...ids])];
++    const pending = jinheSesePendingFriends;
++    if (friends.length===data.friends.length && pending?.signature!==snapshot.signature) return true;
++    if (friends.length!==data.friends.length) {
++      if (friends.length>50||!ids.every(id=>data.knownIds.includes(id)||data.presentIds.includes(id))) return false;
++      const next = snapshot.kernel.apply(snapshot.data.stat_data,{type:'edit',patch:{friends}});
++      await snapshot.mvu.replaceMvuData({...snapshot.data,stat_data:next},snapshot.selector);
++      const applied = rawSnapshot();
++      if (applied.chat!==snapshot.chat||applied.id!==snapshot.id||applied.swipe!==snapshot.swipe) return false;
++      jinheSesePendingFriends = {signature:applied.signature,ids};
++    }
++    await ctx.saveChat();
++    jinheSesePendingFriends = null;
++    sendUpdate();
++    return true;
++  });
++}
++
++async function syncJinheSese() {
++  if (disposed||generationActive||jinheSeseBusy) return;
++  const scope = phoneStoryScope(), adapter = hostPage.__jinheSeseAdapter164;
++  if (scope?.character!==jinheSeseCard||!adapter) return;
++  const storage = hostPage.localStorage;
++  const archiveKey = phoneStorageKey(scope), journalKey = archiveKey+':sese-sync-v1';
++  const same = () => {
++    const active = phoneStoryScope();
++    return !disposed&&active?.chat===scope.chat&&active.character===scope.character;
++  };
++  jinheSeseBusy = true;
++  try {
++    const snapshot = rawSnapshot();
++    if (snapshot.mvu.isDuringExtraAnalysis?.()) return;
++    const year = JSON.parse(storage.getItem(archiveKey)||'null');
++    const nine = year?.archive?.[0];
++    if (!nine?.chats) return;
++    const data = snapshot.kernel.project(snapshot.data.stat_data);
++    const names = [...new Set([...data.knownIds,...data.presentIds])].map(id=>data.people[id]?.name).filter(Boolean);
++    const sese = adapter.read(scope,names);
++    if (!sese) return;
++    const prior = JSON.parse(storage.getItem(journalKey)||'[]');
++    const done = new Set(Array.isArray(prior)?prior:[]);
++    const plan = jinheSesePlan(data,nine,sese,done);
++    const pending = jinheSesePendingFriends?.signature===snapshot.signature?jinheSesePendingFriends.ids:[];
++    if ((pending.length||plan.addToNine.length)&&!await jinheSaveSeseFriends(scope,[...pending,...plan.addToNine])) return;
++    if (!same()||generationActive) return;
++
++    let nineSaved = !plan.nineLines.length;
++    if (!nineSaved && activeFrame?.contentWindow?.importJinheSeseLines) {
++      nineSaved = activeFrame.contentWindow.importJinheSeseLines(plan.nineLines);
++    } else if (!nineSaved && !activeFrame) {
++      const current = JSON.parse(storage.getItem(archiveKey)||'null');
++      if (current?.archive?.[0]?.chats) {
++        jinheApplySeseLines(current.archive[0],plan.nineLines);
++        storage.setItem(archiveKey,JSON.stringify(current));
++        nineSaved = true;
++      }
++    }
++    const seseSaved = !plan.seseUpdates.length||await adapter.append(scope,plan.seseUpdates);
++    if (!same()) return;
++    if (nineSaved) for (const key of plan.nineDone) done.add(key);
++    if (seseSaved) for (const key of plan.seseDone) done.add(key);
++    const encoded = JSON.stringify([...done].slice(-30000));
++    if (storage.getItem(journalKey)!==encoded) storage.setItem(journalKey,encoded);
++    jinheSeseLastError = '';
++  } catch (error) {
++    if (jinheSeseLastError!==error.message) {
++      jinheSeseLastError = error.message;
++      console.warn('[金河手机互通]',error.message);
++    }
++  } finally {
++    jinheSeseBusy = false;
++  }
++}
++
+@@ -578,0 +755,30 @@ function requireConfig(config, needsModel = true) {
++async function phoneChatProxy(action,config,body={}) {
++  if (config.provider!=='openai'||config.forward!=='relay'||!['status','generate'].includes(action)) {
++    throw Error('请在 OpenAI 兼容接口设置中启用酒馆后端转发。');
++  }
++  if (!config.base) throw Error('请先填写九号机的接口地址。');
++  const url=baseRoute(config,chatDefaults.openai,'openai','/models');
++  if (url.search) throw Error('通过酒馆转发时，接口地址请填写不带查询参数的 Base URL。');
++  const reverseProxy=url.origin+url.pathname.slice(0,-'/models'.length);
++  const context=SillyTavern.getContext();
++  if (typeof context?.getRequestHeaders!=='function') throw Error('酒馆后端未就绪，请重新打开九号机。');
++  let response;
++  try {
++    response=await hostPage.fetch('/api/backends/chat-completions/'+action,{
++      method:'POST',headers:context.getRequestHeaders(),credentials:'same-origin',redirect:'error',
++      body:JSON.stringify({...body,chat_completion_source:'openai',reverse_proxy:reverseProxy,
++        proxy_password:config.key||'',stream:false,tool_choice:'none'}),
++      signal:AbortSignal.timeout(45000),
++    });
++  } catch (error) {
++    if (error.name==='AbortError'||error.name==='TimeoutError') throw Error('酒馆转发等待超时。');
++    throw Error('连不上酒馆后端，请重新打开九号机。');
++  }
++  if (!response.ok) throw Error('酒馆转发返回 HTTP '+response.status+'，请检查接口地址和 API 密钥。');
++  const data=await jsonResponse(response);
++  if (data?.error) {
++    const message=typeof data.error.message==='string'?data.error.message:'请检查接口地址和 API 密钥';
++    throw Error('酒馆转发失败 · '+message);
++  }
++  return data;
++}
+@@ -602 +808,4 @@ async function requestChat(config, system, messages) {
+-  const result = read(await jsonResponse(await apiFetch(url,headers,body)));
++  const data = config.forward==='relay'
++    ? await phoneChatProxy('generate',config,{...body,...config.relaySampling})
++    : await jsonResponse(await apiFetch(url,headers,body));
++  const result = read(data);
+@@ -627,0 +837,14 @@ function phoneStorageConfig(scope) {
++function applyPhonePreset(system,config) {
++  const name=config?.presetMode==='pick'?config.presetName:'in_use';
++  if (!name) throw Error('请先选一套酒馆预设。');
++  if (typeof getPreset!=='function') {
++    if (name==='in_use') return system;
++    throw Error('酒馆助手无法读取所选预设，请检查酒馆助手是否启用。');
++  }
++  const preset=getPreset(name);
++  if (!Array.isArray(preset?.prompts)) throw Error('无法读取酒馆预设 '+name+' 的提示词。');
++  const prompts=preset.prompts
++    .filter(prompt=>prompt.enabled===true && typeof prompt.content==='string' && prompt.content.trim())
++    .map(prompt=>typeof substitudeMacros==='function'?substitudeMacros(prompt.content):prompt.content);
++  return [...prompts,system].join('\n\n');
++}
+@@ -630,6 +853,5 @@ async function phoneGenerate(system,messages,config) {
+-  // 手机设置里选了「自填接口」，这条也按自填走。
+-  if(config?.forward==='self'){
+-    if(!config.base&&!config.key)throw Error('九号机还没填接口地址或密钥。');
+-    return requestChat(config,system,messages);
+-  }
+-  if(!config?.forward&&config?.live)return requestChat(config,system,messages);
++  const identity=rawSnapshot().data.stat_data.player?.return_profile?.identity;
++  const playerIdentity=typeof identity==='string'?identity.trim().slice(0,100):'';
++  const phoneSystem=playerIdentity?system+'\n玩家的已知身份或称呼：'+JSON.stringify(playerIdentity)+'。':system;
++  const prompt=applyPhonePreset(phoneSystem,config);
++  if(config?.forward==='self'||!config?.forward&&config?.live) return requestChat(config,prompt,messages);
+@@ -638,4 +860,10 @@ async function phoneGenerate(system,messages,config) {
+-    // 选了「酒馆后端转发」就交给后端代发，用酒馆已配好的连接与密钥；
+-    // 其余情况仍用酒馆主模型（原有方式）。
+-    if(config?.forward==='host')return await hostForwardChat(system,messages,await resolvePhoneHostPreset(config));
+-    const result=await generateRaw({ordered_prompts:[{role:'system',content:system},...structuredClone(messages)],should_stream:false,should_silence:true,max_chat_history:0});
++    if(config?.forward==='relay'){
++      const params=config.presetMode==='manual'?null:await resolvePhoneHostPreset(config);
++      const restricted=/^(gpt-5|o[1-4](?:-|$))/.test(config.model);
++      const relaySampling=params&&!restricted?{frequency_penalty:params.frequency_penalty,
++        presence_penalty:params.presence_penalty,top_p:params.top_p,...(params.stop.length?{stop:params.stop}:{})}:{};
++      return await requestChat({...config,temperature:params?.temperature??config.temperature,
++        tokens:params?.max_tokens||config.tokens,relaySampling},prompt,messages);
++    }
++    if(config?.forward==='host') return await hostForwardChat(prompt,messages,await resolvePhoneHostPreset(config));
++    const result=await generateRaw({ordered_prompts:[{role:'system',content:prompt},...structuredClone(messages)],should_stream:false,should_silence:true,max_chat_history:0});
+@@ -675,0 +904 @@ function notifyInbox(scope,message) {
++  hostNotice.dataset.messageId=message.id;
+@@ -803 +1032 @@ function write(frame,revision,action) {
+-    if (payment&&completedPayments.has(payment)) return projected(latest);
++    const appliedPayment=payment&&completedPayments.get(payment);
+@@ -806 +1035,4 @@ function write(frame,revision,action) {
+-    if (!committedGroupPayment&&(latest.signature!==lastSignature||revision!==updateCount)) {
++    if(appliedPayment && (appliedPayment.signature!==latest.signature || appliedPayment.floor!==latest.id || appliedPayment.swipe!==latest.swipe)) {
++      throw Error('该笔付款已提交，请回原楼层核对账单。');
++    }
++    if (!appliedPayment&&!committedGroupPayment&&(latest.signature!==lastSignature||revision!==updateCount)) {
+@@ -810,5 +1042 @@ function write(frame,revision,action) {
+-    const next=latest.kernel.apply(latest.data.stat_data,action);
+-    // The native county helpers consume phone requests in this transaction. Existing pending turn data stays intact.
+-    const check=rawSnapshot();
+-    if (check.signature!==latest.signature) throw Error('写入时楼层已变化，操作尚未提交。');
+-    const ctx=['buy-property','group-pay'].includes(action.type)?SillyTavern.getContext():null;
++    const ctx=payment||['buy-property','group-pay'].includes(action.type)?SillyTavern.getContext():null;
+@@ -816,4 +1044,4 @@ function write(frame,revision,action) {
+-    if (!committedGroupPayment) await latest.mvu.replaceMvuData({...latest.data,stat_data:next},latest.selector);
+-    if (payment) {
+-      completedPayments.set(payment,true);
+-      if (completedPayments.size>100) completedPayments.delete(completedPayments.keys().next().value);
++    if (!appliedPayment&&!committedGroupPayment) {
++      const next=latest.kernel.apply(latest.data.stat_data,action);
++      if (rawSnapshot().signature!==latest.signature) throw Error('写入时楼层已变化，操作尚未提交。');
++      await latest.mvu.replaceMvuData({...latest.data,stat_data:next},latest.selector);
+@@ -822,0 +1051,4 @@ function write(frame,revision,action) {
++    if (payment&&!appliedPayment) {
++      completedPayments.set(payment,{signature:confirmed.signature,floor:confirmed.id,swipe:confirmed.swipe});
++      if (completedPayments.size>100) completedPayments.delete(completedPayments.keys().next().value);
++    }
+@@ -861,0 +1094,41 @@ function placeDraft(frame,text) {
++async function phoneComfyRequest(scope, iframe, action, config, workflow) {
++  const isCurrent=()=>iframe===activeFrame&&currentChat()===scope.chat;
++  if (!isCurrent()) throw Error('聊天已切换，请重新打开九号机。');
++  const headers=SillyTavern.getContext().getRequestHeaders();
++  let route,body;
++  if (action==='workflow') {
++    // Read the default API graph from Tavern. Custom graphs live in the phone settings.
++    route='workflow';
++    body={file_name:'Default_Comfy_Workflow.json'};
++  } else {
++    const url=parseBase({base:config.base},'http://127.0.0.1:8188');
++    if (url.search||url.hash) throw Error('ComfyUI 地址请填写服务根地址，去掉查询参数和片段。');
++    body={url:url.href.replace(/\/$/,'')};
++    if (action==='ping'||action==='models') route=action;
++    else if (action==='generate'&&workflow&&typeof workflow==='object'&&!Array.isArray(workflow)) {
++      route='generate';
++      body.prompt=JSON.stringify({prompt:workflow});
++    } else throw Error('无效的 ComfyUI 请求。');
++  }
++  const response=await hostPage.fetch('/api/sd/comfy/'+route,{
++    method:'POST',headers,credentials:'same-origin',body:JSON.stringify(body)
++  });
++  if (!response.ok) {
++    if (route==='ping'||route==='models') throw Error('酒馆后端连不上 ComfyUI，请检查地址与服务状态。');
++    const detail=(await response.text()).trim().slice(0,450);
++    throw Error('ComfyUI 请求失败（HTTP '+response.status+'）'+(detail?' · '+detail:''));
++  }
++  if (!isCurrent()) throw Error('手机已关闭或聊天已切换。');
++  return route==='ping'?true:response.json();
++}
++
++function phoneBaiBaiChannel() {
++  const api=hostPage.STBaiBaiImage;
++  if (!api || typeof api.generate!=='function' || typeof api.getBackendStatus!=='function' || api.apiVersion!==1) {
++    throw Error('未找到兼容的柏宝绘公开接口，请确认柏宝绘已在当前酒馆启用。');
++  }
++  const status=api.getBackendStatus();
++  if (status?.backend!=='comfyui') throw Error('请先在柏宝绘的「渠道」页选中 ComfyUI 作为当前出图渠道。');
++  if (status.configured!==true) throw Error('柏宝绘的 ComfyUI 渠道尚未配置好'+(status.reason?' · '+status.reason:'。'));
++  return {api,model:status.model||''};
++}
+@@ -884,0 +1158,13 @@ function draftFrame(snapshot) {
++    comfyRequest:(action,config,workflow)=>phoneComfyRequest(scope,iframe,action,config,workflow),
++    checkBaiBai:()=>{
++      if (iframe!==activeFrame||currentChat()!==scope.chat) throw Error('聊天已切换，请重新打开手机。');
++      return {model:phoneBaiBaiChannel().model};
++    },
++    generateBaiBai:async (prompt,negative)=>{
++      if (iframe!==activeFrame||currentChat()!==scope.chat) throw Error('聊天已切换，请重新打开手机。');
++      if (typeof prompt!=='string'||!prompt.trim()) throw Error('请先填写图片提示词。');
++      const {api}=phoneBaiBaiChannel();
++      const result=await api.generate({prompt,save:false,...(typeof negative==='string'?{negative}:{})});
++      if (iframe!==activeFrame||currentChat()!==scope.chat) throw Error('手机已关闭或聊天已切换。');
++      return result?.dataUrl;
++    },
+@@ -889,0 +1176,5 @@ function draftFrame(snapshot) {
++    proxyChatRequest:(action,config)=>{
++      if(iframe!==activeFrame||currentChat()!==scope.chat)throw Error('聊天已切换，请重新打开手机。');
++      if(action!=='status') throw Error('无效的模型列表请求。');
++      return phoneChatProxy(action,config);
++    },
+@@ -900,0 +1192,8 @@ function draftFrame(snapshot) {
++    discardChatInbox:(id,ids,clear)=>{
++      if(iframe!==activeFrame||currentChat()!==scope.chat)throw Error('聊天已切换，请重新打开手机。');
++      const discarded=new Set(ids),incoming=readInbox(scope);
++      incoming.messages=incoming.messages.filter(message=>message.personId!==id||(!clear&&!discarded.has(message.id)));
++      writeInbox(scope,incoming);
++      if (hostNotice.dataset.person===id&&(clear||discarded.has(hostNotice.dataset.messageId))) hostNotice.hidden=true;
++      setLauncherUnread(incoming.messages.length>0);
++    },
+@@ -913 +1212,7 @@ function draftFrame(snapshot) {
+-    listHostPresets:()=>listHostPresets(),
++    listHostPresets:()=>{
++      if (typeof getPresetNames==='function') {
++        const names=getPresetNames().filter(name=>typeof name==='string'&&name&&name!=='in_use');
++        if (names.length) return {names,via:'酒馆助手'};
++      }
++      return listHostPresets();
++    },
+@@ -1083,0 +1389 @@ function destroy() {
++  clearInterval(jinheSeseTimer);
+@@ -1126,0 +1433 @@ $(()=>{
++  jinheSeseTimer=window.setInterval(syncJinheSese,3000);

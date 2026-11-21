@@ -1,0 +1,8 @@
+diff --git a/turn.js b/turn.js
+index 1bee7c6..b8d3952 100644
+--- a/turn.js
++++ b/turn.js
+@@ -892 +892,2 @@ function renderCountyVariableList(stat, text, offers) {
+-    player: { cash: player.cash, stamina: player.stamina, items: player.items, assets: player.assets },
++    player: { cash: player.cash, stamina: 100, items: player.items, assets: player.assets },
++    腰力规则: '当前腰力为 ∞，行动不扣减腰力。',

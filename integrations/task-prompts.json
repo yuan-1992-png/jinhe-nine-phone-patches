@@ -1,0 +1,35 @@
+{
+  "savedMode": "zh",
+  "templates": {
+    "portrait": {
+      "zh": "根据输入描述角色立绘。保留已知人物外貌、发型、衣着、姿势和情绪。用构图、镜头、光线及环境表现同一个瞬间。",
+      "en": "Write a character portrait prompt faithful to the supplied appearance, clothes, pose, and mood. Describe framing, lighting, and visible surroundings in one scene.",
+      "tags": "Create English comma-separated portrait tags. Keep known visual identity consistent. Include the subject count, framing, visible outfit, expression, lighting, and background."
+    },
+    "storyImage": {
+      "zh": "把输入的正文整理成一张插图。选择行动最清楚的画面，保留场景物件、人物相对位置、光线和插图焦点。",
+      "en": "Turn the excerpt into one illustration. Choose a decisive visible moment and describe the setting, composition, spatial relations, and main on-screen action.",
+      "tags": "Write concise English image tags for one visible story moment. Include setting, shot framing, composition, action, and lighting."
+    },
+    "wardrobeItem": {
+      "zh": "描述单品的品类、颜色、面料、裁剪和结构细节。取俯视的平铺商品照，只陈列指定衣物和配件，无人也无人台。",
+      "en": "Describe the clothing item by type, color, material, cut, and construction. Show it laid flat on an empty studio surface with no person or mannequin.",
+      "tags": "Describe the garment with English tags for item type, color, textile, cut and construction. Flat lay, clothes focus, clean background, garments only."
+    },
+    "wardrobeOutfit": {
+      "zh": "把指定的各件服装并排平铺成套装商品照。逐件保留品类、材质和款式，按叠穿关系摆放。只陈列服装和配饰，无人也无人台。",
+      "en": "Arrange the specified outfit as a top-down product photograph. Keep every garment and accessory identifiable, with visible fabric and layering details. No person or mannequin.",
+      "tags": "Group the named garments and accessories in a single flat lay. Keep all colors, fabrics and layer order. Studio product photography, no humans."
+    },
+    "mapScene": {
+      "zh": "选择单一镜头，描述场景真实可见的地点特征、地形、物件、材质、时间和光线。使用无人环境构图。",
+      "en": "Describe one unoccupied location from one coherent camera view. Include foreground, landmark, background, materials, and lighting.",
+      "tags": "One environment shot, empty location, English tags for landmark, ground, spatial depth, time and lighting. Use a scene perspective."
+    },
+    "itemOverview": {
+      "zh": "把提供的物品在一张静物图中完整呈现。保留各件类型、数量和材料，按组陈列，营造清楚的光线与空间关系。",
+      "en": "Create a single still life of all listed objects. Keep visible types, quantities and materials, and group them on a clean surface with clear lighting.",
+      "tags": "Group every specified object in one still life. Preserve types, counts, materials and arrangement. Object focus, no people, clear lighting."
+    }
+  }
+}
