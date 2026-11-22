@@ -1,19 +1,28 @@
 diff --git a/phone-host.js b/phone-host.js
-index c1f504b..a114bcb 100644
+index c1f504b..8327a75 100644
 --- a/phone-host.js
 +++ b/phone-host.js
-@@ -221,0 +222,176 @@ const hostDocument=hostPage.document;
+@@ -221,0 +222,213 @@ const hostDocument=hostPage.document;
 +const jinheSeseCard = '金河县的精神小妹们v1.6.4 · 九号随身机.png';
 +const jinheSesePrefix = 'jinhe_sese_';
 +const jinheNinePrefix = 'jinhe_nine_';
 +const jinheSharedName = name => typeof name === 'string'
 +  ? name.normalize('NFKC').replace(/\s+/g,'').toLowerCase() : '';
 +let jinheSeseBusy = false;
++let syncKey = '', syncArchiveVersion = 0, lastSync = null;
++function archiveChanged(event) {
++  if (event.key === syncKey || event.key === null) syncArchiveVersion++;
++}
++function contactInputs(state) {
++  const entries = group => Object.entries(group || {}).map(([id,p])=>
++    [id,p?.name,p?.snapshot?.name,p?.present,p?.wechat_unlocked]);
++  return JSON.stringify([entries(state?.collection?.roster),entries(state?.active_girls)]);
++}
 +let jinheSeseTimer = null;
 +let jinheSesePendingFriends = null;
 +let jinheSeseLastError = '';
 +
-+function jinheSesePlan(data,nine,sese,prior) {
++function jinheSesePlan(data,nine,sese,prior,fullHistory=true) {
 +  const byName = new Map();
 +  const chats = new Map();
 +  const nineFriends = new Set(data.friends);
@@ -46,19 +55,25 @@ index c1f504b..a114bcb 100644
 +
 +    const left = Array.isArray(nine.chats[id])?nine.chats[id]:[], right = chats.get(key)?.messages||[];
 +    const nineIds = new Set(left.map(line=>line.id)), seseIds = new Set(right.map(line=>line.id));
-+    const toSese = [], toNine = [];
-+    for (const line of left.slice(-250)) {
++    const toSese = [], toNine = [], nineTimes = [], seseTimes = [];
++    const leftById = new Map(left.map(line=>[line.id,line]));
++    const rightById = new Map(right.map(line=>[line.id,line]));
++    const recentLeft = new Set(left.slice(-250)), recentRight = new Set(right.slice(-250));
++    for (const line of fullHistory ? left : recentLeft) {
 +      if (!line || line.failed || (line.kind&&line.kind!=='voice') ||
 +          !['user','assistant'].includes(line.role) || typeof line.text!=='string' || !line.text.trim() ||
 +          !Number.isFinite(line.at)) continue;
 +      const native = typeof line.id==='string'&&line.id || JSON.stringify([line.role,line.at,line.text.slice(0,160)]);
 +      if (native.startsWith(jinheSesePrefix)) continue;
 +      const mirrored = jinheNinePrefix+native;
++      const copy = rightById.get(mirrored);
++      if (copy && line.storyTime && line.storyTime !== copy.storyTime) seseTimes.push({id:mirrored,storyTime:line.storyTime});
++      else if (copy?.storyTime && !line.storyTime) nineTimes.push({id:native,storyTime:copy.storyTime});
 +      const token = 'line:sese:'+id+':'+mirrored;
-+      if (synced.has(token)) continue;
++      if (synced.has(token) || (!recentLeft.has(line) && !copy)) continue;
 +      if (!seseIds.has(mirrored)) {
 +        toSese.push({id:mirrored,from:line.role==='user'?'me':name,type:line.kind||'text',
-+          content:line.text.slice(0,4000),ts:line.at});
++          content:line.text.slice(0,4000),ts:line.at,...(line.storyTime?{storyTime:line.storyTime}:{})});
 +        seseIds.add(mirrored);
 +      }
 +      seseDone.push(token);
@@ -69,31 +84,42 @@ index c1f504b..a114bcb 100644
 +      const self = line.from==='me';
 +      if (!self&&jinheSharedName(line.from)!==key) continue;
 +      const mirrored = jinheSesePrefix+line.id;
++      const copy = leftById.get(mirrored);
++      if (copy && line.storyTime && copy.storyTime !== line.storyTime) nineTimes.push({id:mirrored,storyTime:line.storyTime});
 +      const token = 'line:nine:'+id+':'+mirrored;
-+      if (synced.has(token)) continue;
++      if (synced.has(token) || (!recentRight.has(line) && !copy)) continue;
 +      if (!nineIds.has(mirrored)) {
 +        toNine.push({id:mirrored,role:self?'user':'assistant',...(self?{}:{speaker:name}),
-+          ...(line.type==='voice'?{kind:'voice'}:{}),text:line.content.slice(0,4000),at:line.ts});
++          ...(line.type==='voice'?{kind:'voice'}:{}),text:line.content.slice(0,4000),at:line.ts,...(line.storyTime?{storyTime:line.storyTime}:{})});
 +        nineIds.add(mirrored);
 +      }
 +      nineDone.push(token);
 +    }
-+    if (toNine.length) nineLines.push({id,lines:toNine});
-+    if (exportFriend||toSese.length) seseUpdates.push({name,addFriend:exportFriend,messages:toSese});
++    if (toNine.length||nineTimes.length) nineLines.push({id,lines:toNine,times:nineTimes});
++    if (exportFriend||toSese.length||seseTimes.length) seseUpdates.push({name,addFriend:exportFriend,messages:toSese,times:seseTimes});
 +  }
 +  return {addToNine,nineLines,seseUpdates,nineDone,seseDone};
 +}
 +
-+function jinheApplySeseLines(nine,additions) {
++function jinheApplySeseLines(nine, additions) {
 +  const chats = nine.chats ||= {};
 +  const changed = [];
-+  for (const {id,lines} of additions) {
-+    const existing = Array.isArray(chats[id])?chats[id]:[];
-+    const ids = new Set(existing.map(line=>line.id));
-+    const appended = lines.filter(line=>!ids.has(line.id));
-+    if (!appended.length) continue;
++  for (const {id, lines, times=[]} of additions) {
++    const existing = chats[id] || [];
++    const ids = new Set(existing.map(line => line.id));
++    const appended = lines.filter(line => !ids.has(line.id));
++    const byId = new Map(times.map(item => [item.id,item.storyTime]));
++    let updated = false;
++    const retained = existing.map(line => {
++      const key = line.id || JSON.stringify([line.role,line.at,line.text?.slice(0,160)]);
++      const storyTime = byId.get(key);
++      if (!storyTime || line.storyTime === storyTime) return line;
++      updated = true;
++      return {...line,storyTime};
++    });
++    if (!updated && !appended.length) continue;
 +    changed.push([id,chats[id]]);
-+    chats[id] = [...existing,...appended].sort((a,b)=>(a.at||0)-(b.at||0));
++    chats[id] = appended.length ? retained.concat(appended).sort((a,b)=>(a.at||0)-(b.at||0)) : retained;
 +  }
 +  return changed;
 +}
@@ -126,27 +152,37 @@ index c1f504b..a114bcb 100644
 +async function syncJinheSese() {
 +  if (disposed||generationActive||jinheSeseBusy) return;
 +  const scope = phoneStoryScope(), adapter = hostPage.__jinheSeseAdapter164;
-+  if (scope?.character!==jinheSeseCard||!adapter) return;
++  if (scope?.character!==jinheSeseCard||!adapter) { lastSync=null; return; }
++    const ctx=SillyTavern.getContext(), id=ctx.chat.length-1, row=ctx.chat[id], swipe=row?.swipe_id??0;
++    const state=row?.variables?.[swipe]?.stat_data;
++    const version=adapter.revision?.(scope);
++    if (version===null) { lastSync=null; return; }
++    const inputs=contactInputs(state), archiveVersion=syncArchiveVersion;
++    const samePeople=lastSync?.chat===scope.chat && lastSync.adapter===adapter && lastSync.inputs===inputs;
++    if (samePeople && lastSync.id===id && lastSync.swipe===swipe && lastSync.version===version &&
++        version!==undefined && lastSync.archiveVersion===archiveVersion && !jinheSesePendingFriends && state) return;
++    const mark=(history=true)=>{lastSync={history,chat:scope.chat,adapter,inputs,id,swipe,version,archiveVersion};};
 +  const storage = hostPage.localStorage;
 +  const archiveKey = phoneStorageKey(scope), journalKey = archiveKey+':sese-sync-v1';
++  syncKey=archiveKey;
 +  const same = () => {
 +    const active = phoneStoryScope();
 +    return !disposed&&active?.chat===scope.chat&&active.character===scope.character;
 +  };
 +  jinheSeseBusy = true;
 +  try {
-+    const snapshot = rawSnapshot();
-+    if (snapshot.mvu.isDuringExtraAnalysis?.()) return;
 +    const year = JSON.parse(storage.getItem(archiveKey)||'null');
 +    const nine = year?.archive?.[0];
-+    if (!nine?.chats) return;
++    if (!nine?.chats) { mark(false); return; }
++    const snapshot = rawSnapshot();
++    if (snapshot.mvu.isDuringExtraAnalysis?.()) return;
 +    const data = snapshot.kernel.project(snapshot.data.stat_data);
 +    const names = [...new Set([...data.knownIds,...data.presentIds])].map(id=>data.people[id]?.name).filter(Boolean);
-+    const sese = adapter.read(scope,names);
++    const sese = adapter.read(scope,names,samePeople && lastSync.history?250:2000);
 +    if (!sese) return;
 +    const prior = JSON.parse(storage.getItem(journalKey)||'[]');
 +    const done = new Set(Array.isArray(prior)?prior:[]);
-+    const plan = jinheSesePlan(data,nine,sese,done);
++    const plan = jinheSesePlan(data,nine,sese,done,!samePeople || !lastSync.history);
 +    const pending = jinheSesePendingFriends?.signature===snapshot.signature?jinheSesePendingFriends.ids:[];
 +    if ((pending.length||plan.addToNine.length)&&!await jinheSaveSeseFriends(scope,[...pending,...plan.addToNine])) return;
 +    if (!same()||generationActive) return;
@@ -168,6 +204,7 @@ index c1f504b..a114bcb 100644
 +    if (seseSaved) for (const key of plan.seseDone) done.add(key);
 +    const encoded = JSON.stringify([...done].slice(-30000));
 +    if (storage.getItem(journalKey)!==encoded) storage.setItem(journalKey,encoded);
++    if (nineSaved && seseSaved) mark();
 +    jinheSeseLastError = '';
 +  } catch (error) {
 +    if (jinheSeseLastError!==error.message) {
@@ -179,7 +216,7 @@ index c1f504b..a114bcb 100644
 +  }
 +}
 +
-@@ -578,0 +755,30 @@ function requireConfig(config, needsModel = true) {
+@@ -578,0 +792,30 @@ function requireConfig(config, needsModel = true) {
 +async function phoneChatProxy(action,config,body={}) {
 +  if (config.provider!=='openai'||config.forward!=='relay'||!['status','generate'].includes(action)) {
 +    throw Error('请在 OpenAI 兼容接口设置中启用酒馆后端转发。');
@@ -210,13 +247,13 @@ index c1f504b..a114bcb 100644
 +  }
 +  return data;
 +}
-@@ -602 +808,4 @@ async function requestChat(config, system, messages) {
+@@ -602 +845,4 @@ async function requestChat(config, system, messages) {
 -  const result = read(await jsonResponse(await apiFetch(url,headers,body)));
 +  const data = config.forward==='relay'
 +    ? await phoneChatProxy('generate',config,{...body,...config.relaySampling})
 +    : await jsonResponse(await apiFetch(url,headers,body));
 +  const result = read(data);
-@@ -627,0 +837,14 @@ function phoneStorageConfig(scope) {
+@@ -627,0 +874,14 @@ function phoneStorageConfig(scope) {
 +function applyPhonePreset(system,config) {
 +  const name=config?.presetMode==='pick'?config.presetName:'in_use';
 +  if (!name) throw Error('请先选一套酒馆预设。');
@@ -231,7 +268,7 @@ index c1f504b..a114bcb 100644
 +    .map(prompt=>typeof substitudeMacros==='function'?substitudeMacros(prompt.content):prompt.content);
 +  return [...prompts,system].join('\n\n');
 +}
-@@ -630,6 +853,5 @@ async function phoneGenerate(system,messages,config) {
+@@ -630,6 +890,5 @@ async function phoneGenerate(system,messages,config) {
 -  // 手机设置里选了「自填接口」，这条也按自填走。
 -  if(config?.forward==='self'){
 -    if(!config.base&&!config.key)throw Error('九号机还没填接口地址或密钥。');
@@ -243,7 +280,7 @@ index c1f504b..a114bcb 100644
 +  const phoneSystem=playerIdentity?system+'\n玩家的已知身份或称呼：'+JSON.stringify(playerIdentity)+'。':system;
 +  const prompt=applyPhonePreset(phoneSystem,config);
 +  if(config?.forward==='self'||!config?.forward&&config?.live) return requestChat(config,prompt,messages);
-@@ -638,4 +860,10 @@ async function phoneGenerate(system,messages,config) {
+@@ -638,4 +897,10 @@ async function phoneGenerate(system,messages,config) {
 -    // 选了「酒馆后端转发」就交给后端代发，用酒馆已配好的连接与密钥；
 -    // 其余情况仍用酒馆主模型（原有方式）。
 -    if(config?.forward==='host')return await hostForwardChat(system,messages,await resolvePhoneHostPreset(config));
@@ -258,25 +295,36 @@ index c1f504b..a114bcb 100644
 +    }
 +    if(config?.forward==='host') return await hostForwardChat(prompt,messages,await resolvePhoneHostPreset(config));
 +    const result=await generateRaw({ordered_prompts:[{role:'system',content:prompt},...structuredClone(messages)],should_stream:false,should_silence:true,max_chat_history:0});
-@@ -675,0 +904 @@ function notifyInbox(scope,message) {
+@@ -652 +917 @@ function sendPhoneConversation(scope,request) {
+-      text,at:Date.now(),...(request.voice?{kind:'voice'}:{})};
++      text,at:Date.now(),storyTime:request.storyTime,...(request.voice?{kind:'voice'}:{})};
+@@ -675,0 +941 @@ function notifyInbox(scope,message) {
 +  hostNotice.dataset.messageId=message.id;
-@@ -803 +1032 @@ function write(frame,revision,action) {
+@@ -714 +980 @@ async function generatePhoneInbox() {
+-    const message={id:'incoming_'+turn+'_'+id,personId:id,role:'assistant',speaker:p.name,text,at:Date.now(),proactive:true};
++    const message={id:'incoming_'+turn+'_'+id,personId:id,role:'assistant',speaker:p.name,text,at:Date.now(),storyTime:current.scene.time_slot,proactive:true};
+@@ -783,0 +1050,4 @@ function sendUpdate() {
++    const ctx=SillyTavern.getContext(), chat=currentChat(), id=ctx.chat.length-1;
++    if (chat!==frameChat) {close();return;}
++    const row=ctx.chat[id], swipe=row?.swipe_id??0, stat=row?.variables?.[swipe]?.stat_data;
++    if (stat && lastSignature===JSON.stringify([chat,id,swipe,stat])) return;
+@@ -803 +1073 @@ function write(frame,revision,action) {
 -    if (payment&&completedPayments.has(payment)) return projected(latest);
 +    const appliedPayment=payment&&completedPayments.get(payment);
-@@ -806 +1035,4 @@ function write(frame,revision,action) {
+@@ -806 +1076,4 @@ function write(frame,revision,action) {
 -    if (!committedGroupPayment&&(latest.signature!==lastSignature||revision!==updateCount)) {
 +    if(appliedPayment && (appliedPayment.signature!==latest.signature || appliedPayment.floor!==latest.id || appliedPayment.swipe!==latest.swipe)) {
 +      throw Error('该笔付款已提交，请回原楼层核对账单。');
 +    }
 +    if (!appliedPayment&&!committedGroupPayment&&(latest.signature!==lastSignature||revision!==updateCount)) {
-@@ -810,5 +1042 @@ function write(frame,revision,action) {
+@@ -810,5 +1083 @@ function write(frame,revision,action) {
 -    const next=latest.kernel.apply(latest.data.stat_data,action);
 -    // The native county helpers consume phone requests in this transaction. Existing pending turn data stays intact.
 -    const check=rawSnapshot();
 -    if (check.signature!==latest.signature) throw Error('写入时楼层已变化，操作尚未提交。');
 -    const ctx=['buy-property','group-pay'].includes(action.type)?SillyTavern.getContext():null;
 +    const ctx=payment||['buy-property','group-pay'].includes(action.type)?SillyTavern.getContext():null;
-@@ -816,4 +1044,4 @@ function write(frame,revision,action) {
+@@ -816,4 +1085,4 @@ function write(frame,revision,action) {
 -    if (!committedGroupPayment) await latest.mvu.replaceMvuData({...latest.data,stat_data:next},latest.selector);
 -    if (payment) {
 -      completedPayments.set(payment,true);
@@ -285,12 +333,12 @@ index c1f504b..a114bcb 100644
 +      const next=latest.kernel.apply(latest.data.stat_data,action);
 +      if (rawSnapshot().signature!==latest.signature) throw Error('写入时楼层已变化，操作尚未提交。');
 +      await latest.mvu.replaceMvuData({...latest.data,stat_data:next},latest.selector);
-@@ -822,0 +1051,4 @@ function write(frame,revision,action) {
+@@ -822,0 +1092,4 @@ function write(frame,revision,action) {
 +    if (payment&&!appliedPayment) {
 +      completedPayments.set(payment,{signature:confirmed.signature,floor:confirmed.id,swipe:confirmed.swipe});
 +      if (completedPayments.size>100) completedPayments.delete(completedPayments.keys().next().value);
 +    }
-@@ -861,0 +1094,41 @@ function placeDraft(frame,text) {
+@@ -861,0 +1135,41 @@ function placeDraft(frame,text) {
 +async function phoneComfyRequest(scope, iframe, action, config, workflow) {
 +  const isCurrent=()=>iframe===activeFrame&&currentChat()===scope.chat;
 +  if (!isCurrent()) throw Error('聊天已切换，请重新打开九号机。');
@@ -332,7 +380,7 @@ index c1f504b..a114bcb 100644
 +  if (status.configured!==true) throw Error('柏宝绘的 ComfyUI 渠道尚未配置好'+(status.reason?' · '+status.reason:'。'));
 +  return {api,model:status.model||''};
 +}
-@@ -884,0 +1158,13 @@ function draftFrame(snapshot) {
+@@ -884,0 +1199,13 @@ function draftFrame(snapshot) {
 +    comfyRequest:(action,config,workflow)=>phoneComfyRequest(scope,iframe,action,config,workflow),
 +    checkBaiBai:()=>{
 +      if (iframe!==activeFrame||currentChat()!==scope.chat) throw Error('聊天已切换，请重新打开手机。');
@@ -346,13 +394,13 @@ index c1f504b..a114bcb 100644
 +      if (iframe!==activeFrame||currentChat()!==scope.chat) throw Error('手机已关闭或聊天已切换。');
 +      return result?.dataUrl;
 +    },
-@@ -889,0 +1176,5 @@ function draftFrame(snapshot) {
+@@ -889,0 +1217,5 @@ function draftFrame(snapshot) {
 +    proxyChatRequest:(action,config)=>{
 +      if(iframe!==activeFrame||currentChat()!==scope.chat)throw Error('聊天已切换，请重新打开手机。');
 +      if(action!=='status') throw Error('无效的模型列表请求。');
 +      return phoneChatProxy(action,config);
 +    },
-@@ -900,0 +1192,8 @@ function draftFrame(snapshot) {
+@@ -900,0 +1233,8 @@ function draftFrame(snapshot) {
 +    discardChatInbox:(id,ids,clear)=>{
 +      if(iframe!==activeFrame||currentChat()!==scope.chat)throw Error('聊天已切换，请重新打开手机。');
 +      const discarded=new Set(ids),incoming=readInbox(scope);
@@ -361,7 +409,7 @@ index c1f504b..a114bcb 100644
 +      if (hostNotice.dataset.person===id&&(clear||discarded.has(hostNotice.dataset.messageId))) hostNotice.hidden=true;
 +      setLauncherUnread(incoming.messages.length>0);
 +    },
-@@ -913 +1212,7 @@ function draftFrame(snapshot) {
+@@ -913 +1253,7 @@ function draftFrame(snapshot) {
 -    listHostPresets:()=>listHostPresets(),
 +    listHostPresets:()=>{
 +      if (typeof getPresetNames==='function') {
@@ -370,7 +418,11 @@ index c1f504b..a114bcb 100644
 +      }
 +      return listHostPresets();
 +    },
-@@ -1083,0 +1389 @@ function destroy() {
+@@ -1083,0 +1430,3 @@ function destroy() {
 +  clearInterval(jinheSeseTimer);
-@@ -1126,0 +1433 @@ $(()=>{
++  window.removeEventListener('storage',archiveChanged);
++  hostPage.removeEventListener('storage',archiveChanged);
+@@ -1126,0 +1476,3 @@ $(()=>{
++  window.addEventListener('storage',archiveChanged);
++  hostPage.addEventListener('storage',archiveChanged);
 +  jinheSeseTimer=window.setInterval(syncJinheSese,3000);

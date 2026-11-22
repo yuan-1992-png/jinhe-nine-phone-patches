@@ -1,0 +1,17 @@
+{
+  "id": "3290528a-f12c-4e37-af67-16ecf7830856",
+  "scriptName": "金河县·隐藏状态栏后重复的人物变量快照",
+  "findRegex": "/(<StatusPlaceHolderImpl\\s*\\/\\s*>[ \\t]*(?:\\r?\\n[ \\t]*)+)\\x60{3}[ \\t]*(?:json)?[ \\t]*\\r?\\n(?=[ \\t\\r\\n]*\\{[ \\t\\r\\n]*\"active_girls\"[ \\t\\r\\n]*:[ \\t\\r\\n]*\\{[ \\t\\r\\n]*\"girl_[a-z0-9_]+\"[ \\t\\r\\n]*:[ \\t\\r\\n]*\\{)(?:(?![ \\t]*\\x60{3})[^\\r\\n]*\\r?\\n)*?[ \\t]*\\}[ \\t]*\\r?\\n[ \\t]*\\x60{3}[ \\t]*(?=\\r?\\n|$)/gi",
+  "replaceString": "$1",
+  "trimStrings": [],
+  "placement": [
+    2
+  ],
+  "disabled": false,
+  "markdownOnly": true,
+  "promptOnly": false,
+  "runOnEdit": true,
+  "substituteRegex": 0,
+  "minDepth": null,
+  "maxDepth": null
+}

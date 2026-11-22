@@ -1,5 +1,5 @@
 diff --git a/phone-ui.js b/phone-ui.js
-index 5840430..8f17b5c 100644
+index 5840430..78292b6 100644
 --- a/phone-ui.js
 +++ b/phone-ui.js
 @@ -2365 +2365,2 @@ function imageDimensions(config,kind) {
@@ -408,6 +408,18 @@ index 5840430..8f17b5c 100644
 +    wardrobeWorkflow:formValue(form,'comfyWardrobeWorkflow'),selfieWorkflow:formValue(form,'comfySelfieWorkflow')}):
 +    safePhoneComfy(imageSettingsDrafts.get(form)?.comfy||settings.image.comfy);
 +  return {provider,base,key,model,remember,comfy,style:formValue(form,'style'),auto:form.elements.auto.checked,
+@@ -3404 +3718 @@ async function sendChat(form) {
+-  if (!tryAgain) lines.push({role:'user',text});
++  if (!tryAgain) lines.push({role:'user',text,storyTime:scene().time_slot,at:Date.now()});
+@@ -3420 +3734 @@ async function sendChat(form) {
+-    lines.push({role:'assistant',text:answer,at:Date.now(),speaker:p.name});
++    lines.push({role:'assistant',text:answer,at:Date.now(),storyTime:scene().time_slot,speaker:p.name});
+@@ -3452 +3766 @@ async function sendGift(form) {
+-    conversation(id).push({role:'user',kind:'gift',amount,text:'红包 '+money(amount)});
++    conversation(id).push({storyTime:scene().time_slot,at:Date.now(),role:'user',kind:'gift',amount,text:'红包 '+money(amount)});
+@@ -3459 +3773 @@ async function sendGift(form) {
+-  conversation(id).push({role:'user',kind:'gift',text:`红包 ${money(amount)} · 好感度 +1`});
++  conversation(id).push({storyTime:scene().time_slot,at:Date.now(),role:'user',kind:'gift',text:`红包 ${money(amount)} · 好感度 +1`});
 @@ -3657,5 +3971,10 @@ async function translateImage(button) {
 -  const form = button.form, field = form.elements.prompt, initial = field.value;
 -  const message = form.querySelector('#image-status'), config = {...settings.chat};
@@ -596,17 +608,26 @@ index 5840430..8f17b5c 100644
 -  if (route === 'self') return requestChat(config, system, messages);
 @@ -5328,0 +5713 @@ async function requestPhoneChat(config, system, messages) {
 +  if (route === 'relay') throw Error('请在酒馆里打开九号机使用后端转发。');
-@@ -5526,0 +5912,29 @@ function bootHostClient() {
-+function jinheApplySeseLines(nine,additions) {
+@@ -5526,0 +5912,38 @@ function bootHostClient() {
++function jinheApplySeseLines(nine, additions) {
 +  const chats = nine.chats ||= {};
 +  const changed = [];
-+  for (const {id,lines} of additions) {
-+    const existing = Array.isArray(chats[id])?chats[id]:[];
-+    const ids = new Set(existing.map(line=>line.id));
-+    const appended = lines.filter(line=>!ids.has(line.id));
-+    if (!appended.length) continue;
++  for (const {id, lines, times=[]} of additions) {
++    const existing = chats[id] || [];
++    const ids = new Set(existing.map(line => line.id));
++    const appended = lines.filter(line => !ids.has(line.id));
++    const byId = new Map(times.map(item => [item.id,item.storyTime]));
++    let updated = false;
++    const retained = existing.map(line => {
++      const key = line.id || JSON.stringify([line.role,line.at,line.text?.slice(0,160)]);
++      const storyTime = byId.get(key);
++      if (!storyTime || line.storyTime === storyTime) return line;
++      updated = true;
++      return {...line,storyTime};
++    });
++    if (!updated && !appended.length) continue;
 +    changed.push([id,chats[id]]);
-+    chats[id] = [...existing,...appended].sort((a,b)=>(a.at||0)-(b.at||0));
++    chats[id] = appended.length ? retained.concat(appended).sort((a,b)=>(a.at||0)-(b.at||0)) : retained;
 +  }
 +  return changed;
 +}
@@ -626,10 +647,30 @@ index 5840430..8f17b5c 100644
 +  if (['contacts','chat'].includes(section)&&!$('modal').open&&!focused?.closest('form')) render();
 +  return true;
 +};
-@@ -6101 +6515 @@ function osHome() {
+@@ -6030,4 +6453,4 @@ function osTotalUnread() { return state.friends.reduce((total,id)=>total+osUnrea
+-function osClock(at) {
+-  if (!at) return '';
+-  return new Date(at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
+-}
++function osClock(line) {
++    const time = String(line?.storyTime || '').match(/(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?!\d)/);
++    return time ? time[1].padStart(2,'0') + ':' + time[2] : '';
++  }
+@@ -6101 +6524 @@ function osHome() {
 -    '</strong><em>体力 '+state.stamina+' / 100</em></button></div>'+
 +    '</strong><em>'+(state.unlimitedStamina?'腰力 ∞':'体力 '+state.stamina+' / 100')+'</em></button></div>'+
-@@ -6162 +6576,46 @@ function osContacts() {
+@@ -6113,2 +6536,2 @@ function osGroupLines(group) {
+-  const gifts=payments.filter(item=>item.groupId===group.id).map(({id,amount,at})=>({
+-    id,amount,at,role:'user',kind:'gift',text:'群红包 '+money(amount),
++  const gifts=payments.filter(item=>item.groupId===group.id).map(({id,amount,at,storyTime})=>({
++    id,amount,at,storyTime,role:'user',kind:'gift',text:'群红包 '+money(amount),
+@@ -6148 +6571 @@ function osContacts() {
+-      '</strong><small>'+esc(osCaption({text:caption}))+'</small></span><span class="os-message-meta"><time>'+esc(osClock(line?.at))+'</time>'+
++      '</strong><small>'+esc(osCaption({text:caption}))+'</small></span><span class="os-message-meta"><time>'+esc(osClock(line))+'</time>'+
+@@ -6157 +6580 @@ function osContacts() {
+-      esc(osClock(line?.at))+'</time>'+(unread?'<span class="unread">'+unread+'</span>':'')+'</span></button>';
++      esc(osClock(line))+'</time>'+(unread?'<span class="unread">'+unread+'</span>':'')+'</span></button>';
+@@ -6162 +6585,46 @@ function osContacts() {
 -function osMessageLine(line,p,index) {
 +let osHistoryScope='';
 +function osAskDeleteHistory(index) {
@@ -677,26 +718,58 @@ index 5840430..8f17b5c 100644
 +  notify(syncError?'聊天记录已删除，通知同步失败。':clear?'聊天记录已清空。':'消息已删除。');
 +}
 +function osMessageLine(line,p,index,managing) {
-@@ -6190 +6649,2 @@ function osMessageLine(line,p,index) {
+@@ -6190 +6658,2 @@ function osMessageLine(line,p,index) {
 -    (line.failed?'<div class="os-message-status">尚未获答，可重新发送</div>':'')+'</div></div>';
 +    (line.failed?'<div class="os-message-status">尚未获答，可重新发送</div>':'')+
 +    (managing?'<div class="os-message-status">'+btn('删除','os-delete-history',{index})+'</div>':'')+'</div></div>';
-@@ -6199 +6659 @@ function osChat() {
+@@ -6199 +6668 @@ function osChat() {
 -  const scope=opening+':chat:'+p.id,lines=conversation(p.id);
 +  const scope=opening+':chat:'+p.id,lines=conversation(p.id),managing=osHistoryScope===scope;
-@@ -6203,0 +6664,2 @@ function osChat() {
+@@ -6203,0 +6673,2 @@ function osChat() {
 +    (lines.length||managing?btn(managing?'完成':'管理记录','os-manage-history'):'')+
 +    (managing&&lines.length?btn('清空记录','os-clear-history'):'')+
-@@ -6212 +6674 @@ function osChat() {
+@@ -6210,3 +6681,4 @@ function osChat() {
+-    const at=line.at||0,divider=at&&(!previous||at-previous>5*60*1000)?'<div class="os-chat-time">'+esc(osClock(at))+'</div>':'';
+-    if (at) previous=at;
 -    return divider+osMessageLine(line,p,index);
++    const label=osClock(line), stamp=line.storyTime || '';
++    const divider=label && stamp!==previous ? '<div class="os-chat-time">'+esc(label)+'</div>' : '';
++    previous=stamp;
 +    return divider+osMessageLine(line,p,index,managing);
-@@ -6513 +6975 @@ function openImageShot(context,prompt) {
+@@ -6249,2 +6721,3 @@ function osGroupChat() {
+-    const at=line.at||0,divider=at&&(!previous||at-previous>5*60*1000)?'<div class="os-chat-time">'+esc(osClock(at))+'</div>':'';
+-    if (at) previous=at;
++    const label=osClock(line), stamp=line.storyTime || '';
++    const divider=label && stamp!==previous ? '<div class="os-chat-time">'+esc(label)+'</div>' : '';
++    previous=stamp;
+@@ -6263 +6736 @@ async function osSendGroupChat(form) {
+-  (group.lines||=[]).push({id:osId(),role:'user',text,at:Date.now()});
++  (group.lines||=[]).push({id:osId(),role:'user',text,at:Date.now(),storyTime:scene().time_slot});
+@@ -6279 +6752 @@ async function osSendGroupChat(form) {
+-        text:reply.text,at:base+index*500,speaker:reply.name});
++        text:reply.text,storyTime:scene().time_slot,at:base+index*500,speaker:reply.name});
+@@ -6302 +6775 @@ async function osSendChat(form) {
+-  if (!message) {message={id:osId(),role:'user',text,at:Date.now(),...(voice?{kind:'voice'}:{})};lines.push(message);}
++  if (!message) {message={id:osId(),role:'user',text,at:Date.now(),storyTime:scene().time_slot,...(voice?{kind:'voice'}:{})};lines.push(message);}
+@@ -6309 +6782 @@ async function osSendChat(form) {
+-      id:message.id,personId:id,speaker:p.name,voice,prompt:characterPrompt(profile,scene(),text),messages,config:{...settings.chat}
++      id:message.id,personId:id,speaker:p.name,storyTime:scene().time_slot,voice,prompt:characterPrompt(profile,scene(),text),messages,config:{...settings.chat}
+@@ -6313 +6786 @@ async function osSendChat(form) {
+-      at:Date.now(),speaker:p.name,...(voice?{kind:'voice'}:{})
++      at:Date.now(),storyTime:scene().time_slot,speaker:p.name,...(voice?{kind:'voice'}:{})
+@@ -6488 +6961 @@ finishPhoto=async(context,image)=>{
+-  if (line) {line.at=Date.now();line.speaker=p.name;line.text='[照片]';}
++  if (line) {line.at=Date.now();line.storyTime=scene().time_slot;line.speaker=p.name;line.text='[照片]';}
+@@ -6493 +6966 @@ finishPhoto=async(context,image)=>{
+-    if (osAlive) lines.push({id:osId(),role:'assistant',text:caption,at:Date.now(),speaker:p.name});
++    if (osAlive) lines.push({id:osId(),role:'assistant',text:caption,at:Date.now(),storyTime:scene().time_slot,speaker:p.name});
+@@ -6513 +6986 @@ function openImageShot(context,prompt) {
 -    imageOptionsPanel(config,kind,{...context,originLabel:context.origin?'已选相册原图 · '+context.origin.title:''})+
 +    phoneImageTaskPanel(kind)+imageOptionsPanel(config,kind,{...context,originLabel:context.origin?'已选相册原图 · '+context.origin.title:''})+
-@@ -6515 +6977 @@ function openImageShot(context,prompt) {
+@@ -6515 +6988 @@ function openImageShot(context,prompt) {
 -    (kind==='live-cover'?'生成并设为封面':'生成照片')+'</button>'+btn('英文提示词','translate-image')+
 +    (kind==='live-cover'?'生成并设为封面':'生成照片')+'</button>'+
-@@ -6603,0 +7066,10 @@ function bootPhoneExperience() {
+@@ -6603,0 +7077,10 @@ function bootPhoneExperience() {
 +    'os-manage-history':()=>{
 +      const scope=opening+':chat:'+activePerson;
 +      osHistoryScope=osHistoryScope===scope?'':scope;
@@ -707,3 +780,9 @@ index 5840430..8f17b5c 100644
 +    'os-delete-history':({index})=>osAskDeleteHistory(index),
 +    'os-clear-history':()=>osAskDeleteHistory(),
 +    'os-delete-history-confirm':osConfirmDeleteHistory,
+@@ -6713 +7196 @@ function bootPhoneExperience() {
+-    const line={id:osId(),role:'user',kind:'location',locationId:id,text:place.name,at:Date.now()};
++    const line={id:osId(),role:'user',kind:'location',locationId:id,text:place.name,at:Date.now(),storyTime:scene().time_slot};
+@@ -6756 +7239 @@ function bootPhoneExperience() {
+-        state.groupPayments=[...(state.groupPayments||[]),{id:requestId,groupId:group.id,amount,at:Date.now()}];
++        state.groupPayments=[...(state.groupPayments||[]),{id:requestId,groupId:group.id,amount,at:Date.now(),storyTime:scene().time_slot}];

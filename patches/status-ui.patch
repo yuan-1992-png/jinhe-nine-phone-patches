@@ -1,0 +1,68 @@
+diff --git a/status-ui.js b/status-ui.js
+index 3968e29..78493a8 100644
+--- a/status-ui.js
++++ b/status-ui.js
+@@ -2290 +2290,2 @@ function requestsCountyPrivateMode(text) {
+-      try {
++
++      function watchSavedHud() {
+@@ -2291,0 +2293,31 @@ function requestsCountyPrivateMode(text) {
++        const tavern = host.SillyTavern;
++        if (typeof tavern?.getContext !== 'function' ||
++            typeof getCurrentMessageId !== 'function') return;
++
++        const currentChat = ctx => String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? '');
++        const chatId = currentChat(tavern.getContext());
++        if (!chatId) return;
++        let lastSnapshot = '', observedStat, checkedAt = -Infinity, inView = true, lastSwipe=-1;
++        const catchUp = (force=false) => {
++          try {
++            const ctx = tavern.getContext();
++            if (host.document.hidden || (!inView && !force) || currentChat(ctx) !== chatId) return;
++            const messageId = getCurrentMessageId();
++            if (!Number.isInteger(messageId) || messageId < 0) return;
++            const row = ctx.chat?.[messageId];
++            if (!row) return;
++            const swipe = row.swipe_id ?? 0;
++            // Read the committed swipe. The MVU event can fire before the
++            // variable write, and the variable manager can save without it.
++            const stat = row.variables?.[swipe]?.stat_data;
++            const now = performance.now();
++            if (!force && stat===observedStat && swipe===lastSwipe && now-checkedAt<2800) return;
++            observedStat=stat; lastSwipe=swipe; checkedAt=now;
++            const nextSnapshot = JSON.stringify([messageId, swipe, stat]);
++            if (nextSnapshot === lastSnapshot) return;
++            lastSnapshot = nextSnapshot;
++            refreshSavedHud();
++          } catch (error) {
++            console.warn('[金河县状态栏] 无法检查楼层变量更新', error);
++          }
++        };
+@@ -2293,2 +2325 @@ function requestsCountyPrivateMode(text) {
+-          if (detail && typeof getCurrentMessageId === 'function' &&
+-              detail.chat === host.SillyTavern?.getCurrentChatId?.() && detail.floor === getCurrentMessageId()) refreshSavedHud();
++          if (detail?.chat === chatId && detail.floor === getCurrentMessageId()) catchUp(true);
+@@ -2295,0 +2327,7 @@ function requestsCountyPrivateMode(text) {
++        const visibleAgain=()=>{if(!host.document.hidden) catchUp(true);};
++        const observer = window.frameElement && host.IntersectionObserver ? new host.IntersectionObserver(entries=>{
++          inView=entries[0]?.isIntersecting===true;
++          if(inView) catchUp(true);
++        }) : null;
++        if(observer) observer.observe(window.frameElement);
++        const timer = window.setInterval(catchUp, 1000);
+@@ -2297,2 +2335,10 @@ function requestsCountyPrivateMode(text) {
+-        window.addEventListener('pagehide', () => host.removeEventListener('jinhe:floor-state-saved', refreshFloor), { once: true });
+-      } catch {}
++        host.document.addEventListener('visibilitychange', visibleAgain);
++        window.addEventListener('pagehide', () => {
++          window.clearInterval(timer);
++          observer?.disconnect();
++          host.removeEventListener('jinhe:floor-state-saved', refreshFloor);
++          host.document.removeEventListener('visibilitychange', visibleAgain);
++        }, { once: true });
++        catchUp();
++      }
++
+@@ -2299,0 +2346,2 @@ function requestsCountyPrivateMode(text) {
++      try { watchSavedHud(); }
++      catch (error) { console.warn('[金河县状态栏] 无法监听状态更新', error); }

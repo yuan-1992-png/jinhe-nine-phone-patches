@@ -1,5 +1,5 @@
 diff --git a/zod.js b/zod.js
-index 360c998..8ac9433 100644
+index 360c998..fbcb59e 100644
 --- a/zod.js
 +++ b/zod.js
 @@ -272,0 +273,2 @@ try {
@@ -27,28 +27,58 @@ index 360c998..8ac9433 100644
 @@ -2000 +2010 @@ function countyPurchaseState(before, type) {
 -  const next = { ...before, player:{ ...before.player } };
 +  const next = { ...before, player:{ ...before.player, stamina:countyUnlimitedStamina } };
-@@ -2348,3 +2357,0 @@ function allowedCountyCommand(command, state, people) {
+@@ -2319,0 +2330,26 @@ const countyShortValue = (value, limit = 100) =>
++function countyReentryDisplay(saved, incoming, name) {
++  const proposedName = countyNameKey(incoming?.name);
++  if (proposedName && proposedName !== countyNameKey(name)) return {};
++  const display = {};
++  const voice = typeof incoming?.inner_voice === 'string' ? incoming.inner_voice.trim().slice(0, 160) : '';
++  if (voice) display.inner_voice = voice;
++  for (const [section, fields] of [
++    ['outfit', ['style_name', 'outer_wear', 'inner_secret', 'strip_stage']],
++    ['body_status', ['posture', 'current_react']],
++  ]) {
++    const values = Object.fromEntries(fields.flatMap(key => {
++      const value = incoming?.[section]?.[key];
++      return typeof value === 'string' && value.trim() ? [[key, value.trim().slice(0, 240)]] : [];
++    }));
++    if (Object.keys(values).length) display[section] = { ...saved[section], ...values };
++  }
++  const life = {};
++  for (const field of ['work', 'income', 'routine', 'availability']) {
++    const raw = incoming?.daily_life?.[field];
++    const value = typeof raw === 'string' ? raw.trim() : '';
++    if (value && !['未聊到', '未记录', '未知', '未约定'].includes(value)) life[field] = value.slice(0, 160);
++  }
++  if (Object.keys(life).length) display.daily_life = { ...saved.daily_life, ...life };
++  return display;
++}
++
+@@ -2348,3 +2383,0 @@ function allowedCountyCommand(command, state, people) {
 -  if (root === 'player' && section === 'stamina' && path.length === 2 && ['set', 'add'].includes(command.type)) {
 -    return typeof value === 'number' && Number.isFinite(value);
 -  }
-@@ -2599 +2606,2 @@ function countyTrustedCommand(command, trusted) {
+@@ -2403 +2436 @@ function allowedCountyCommand(command, state, people) {
+-      args[args.length - 1] = JSON.stringify(ActiveGirlSchema.parse({ ...saved, id: section, name, age_tag: age, present: true, body_profile: profile }));
++      args[args.length - 1] = JSON.stringify(ActiveGirlSchema.parse({ ...saved, ...countyReentryDisplay(saved, value, name), id: section, name, age_tag: age, present: true, body_profile: profile }));
+@@ -2599 +2632,2 @@ function countyTrustedCommand(command, trusted) {
 -      (path[0] === 'scene' && path[1] === 'county_name')) return false;
 +      (path[0] === 'scene' && path[1] === 'county_name') ||
 +      (path[0] === 'player' && (path.length === 1 || path[1] === 'stamina'))) return false;
-@@ -2758,0 +2767 @@ $(() => {
+@@ -2758,0 +2793 @@ $(() => {
 +    if (state?.player) state.player.stamina=countyUnlimitedStamina;
-@@ -2765 +2774 @@ $(() => {
+@@ -2765 +2800 @@ $(() => {
 -      const player = { ...before.player };
 +      const player = { ...before.player, stamina:countyUnlimitedStamina };
-@@ -2778 +2787 @@ $(() => {
+@@ -2778 +2813 @@ $(() => {
 -    const migrated = migrateCast(before);
 +    const migrated = migrateCast({...before,player:{...before.player,stamina:countyUnlimitedStamina}});
-@@ -2854 +2863 @@ $(() => {
+@@ -2854 +2889 @@ $(() => {
 -      cash:state.player.cash,stamina:state.player.stamina,items:clone(state.player.items||[]),
 +      cash:state.player.cash,stamina:countyUnlimitedStamina,unlimitedStamina:true,items:clone(state.player.items||[]),
-@@ -2856,0 +2866 @@ $(() => {
+@@ -2856,0 +2892 @@ $(() => {
 +      paymentNotice:receipt && receipt.turn===state.world_ledger?.turn && receipt.spent===0 ? receipt.reason||'' : '',
-@@ -2939,4 +2949,3 @@ $(() => {
+@@ -2939,4 +2975,3 @@ $(() => {
 -    for (const [field,max] of [['cash',999999999999],['stamina',100]]) {
 -      if (!own(patch,field)) continue;
 -      if (!bounded(patch[field],max)) throw Error('玩家数值超出范围。');
@@ -56,16 +86,16 @@ index 360c998..8ac9433 100644
 +    if (own(patch,'cash')) {
 +      if (!bounded(patch.cash,999999999999)) throw Error('玩家金额超出范围。');
 +      state.player.cash=patch.cash;
-@@ -2984 +2993,3 @@ $(() => {
+@@ -2984 +3019,3 @@ $(() => {
 -    if (!state.active_girls[id] || state.active_girls[id].present===false) throw Error('需要人物在场，原卡才受理付款。');
 +    const present=state.active_girls[id] && state.active_girls[id].present!==false;
 +    const friend=state.collection.roster[id]?.wechat_unlocked===true;
 +    if (!present && (kind!=='gift'||!friend)) throw Error('收款人需在场，或已加微信后通过私聊收红包。');
-@@ -2987 +2998 @@ $(() => {
+@@ -2987 +3024 @@ $(() => {
 -    countyEconomy(state,before,request,state.world_ledger?.turn??0,null);
 +    countyEconomy(state,before,request,state.world_ledger?.turn??0,null,present?[]:[[id,girl]]);
-@@ -2994 +3005 @@ $(() => {
+@@ -2994 +3031 @@ $(() => {
 -    savePerson(state,id,girl,true,state.collection.roster[id]?.wechat_unlocked===true);
 +    savePerson(state,id,girl,Boolean(present),friend);
-@@ -3086,0 +3098 @@ $(() => {
+@@ -3086,0 +3124 @@ $(() => {
 +    state.player.stamina=countyUnlimitedStamina;
