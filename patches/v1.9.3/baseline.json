@@ -1,0 +1,20 @@
+{
+  "version": "v1.9.3",
+  "scripts": {
+    "zod.js": {
+      "name": "金河县 · Zod",
+      "sha256": "cad5d916c0d56d1797f9f0f5d33856b98d1bd595ca58d193b97a2899580efd7c",
+      "bytes": 369060
+    },
+    "turn.js": {
+      "name": "金河县 · 回合资料",
+      "sha256": "d7190d1bf3d29d23cc9ecec890af6764fc381daa8363855b069b2055454ce018",
+      "bytes": 208097
+    },
+    "phone.js": {
+      "name": "金河县 · 九号随身机",
+      "sha256": "0ea4664774bb6621a6692120225212cb2a9ced750e91c21938480e947fe34028",
+      "bytes": 963747
+    }
+  }
+}

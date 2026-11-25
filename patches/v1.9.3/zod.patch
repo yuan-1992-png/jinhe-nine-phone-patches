@@ -1,0 +1,136 @@
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\a_zod.js" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\b_zod.js"
+index 698de98..b648335 100644
+--- a/zod.js
++++ b/zod.js
+@@ -1227,7 +1227,7 @@ export function createCountySchema(z, presetPeople, countyOpeningProfile, county
+           ['gift','shared','support','expense','property','lease'].includes(line?.kind)).slice(0,9) : [], z.array(AccountLine)).optional(),
+       }).optional(),
+       cash: ClampedNumber(0, 999999999999, 1280).describe('兜里零花钱（元），可请喝奶茶、开台球VIP包厢、打赏主播、买车买房包养小妹'),
+-      stamina: ClampedNumber(0, 100, 100).describe('精力/腰力值 0-100'),
++      stamina: z.preprocess(()=>100,ClampedNumber(0,100,100)).describe('腰力无限，存储值为100'),
+       items: StringList(['华子半包', '九号改装电驴钥匙', '草莓味超薄001一盒']).describe('随身撩妹道具'),
+     }),
+ 
+@@ -1263,6 +1263,7 @@ export function createCountySchema(z, presetPeople, countyOpeningProfile, county
+       const girl = countySafeParse(ActiveGirlSchema, state.active_girl);
+       return { ...state, active_girls: girl.present && hasEncounterIdentity(girl) ? { [girl.id]: girl } : {} };
+     }
++    state.player.stamina = 100;
+     return state;
+   }
+ 
+@@ -2195,7 +2196,7 @@ function countyLedger(state, before, request, turn) {
+ }
+ 
+ function countyPurchaseState(before, type) {
+-  const next = { ...before, player:{ ...before.player } };
++  const next = { ...before, player:{ ...before.player,stamina:100 } };
+   countyEconomy(next, before, {property:{action:'buy',type}}, before.world_ledger?.turn ?? 0, null);
+   return next;
+ }
+@@ -2318,8 +2319,7 @@ function countyJobRequest(state,before,request,text,turn) {
+   const entry=job&&countyJobStatus(before.player,job.id);
+   const payment={...request};
+   delete payment.earning;
+-  const canSettle=entry&&entry.completedTurn===undefined&&(job.endId||job.placeId)===state.scene.location_id&&
+-    (before.player.stamina??100)>=(job.stamina||0);
++  const canSettle=entry&&entry.completedTurn===undefined&&(job.endId||job.placeId)===state.scene.location_id;
+   if (!canSettle) return {payment};
+   payment.earning={...countyJobEarning(job),note:job.title};
+   return {payment,job};
+@@ -2331,7 +2331,7 @@ function countyCompleteJob(state,before,job,turn) {
+   if (!job||state.player.receipt?.earned!==job.pay) return;
+   state.player.life_jobs[job.id].completedTurn=turn;
+   state.player.receipt.reason='委托完成 · '+job.title;
+-  if (job.stamina) state.player.stamina=Math.max(0,(before.player.stamina??100)-job.stamina);
++  state.player.stamina=100;
+   const active=state.active_girls?.[job.personId];
+   const record=state.collection?.roster?.[job.personId];
+   if (!job.affinity||(!active&&!record)) return;
+@@ -2711,9 +2711,7 @@ function allowedCountyCommand(command, state, people) {
+     return Array.isArray(value) && value.length <= 24 &&
+       value.every(item => typeof item === 'string' && item.trim() && item.length <= 50);
+   }
+-  if (root === 'player' && section === 'stamina' && path.length === 2 && ['set', 'add'].includes(command.type)) {
+-    return typeof value === 'number' && Number.isFinite(value);
+-  }
++  if (root === 'player' && section === 'stamina') return false;
+   // 不在场的熟人（微信聊天、别人转述）也能补具体年龄，写在通讯录档案上。
+   if (root === 'collection' && requestedId === 'roster' && path.length === 4 && leaf === 'age_tag' &&
+       command.type === 'set') {
+@@ -2999,7 +2997,7 @@ function countyTrustedCommand(command, trusted) {
+   const path = countyCommandPath(command);
+   if (!path || !path.length || path[0] === 'county_repair' ||
+       (path[0] === 'scene' && path[1] === 'county_name')) return false;
+-  if (path[0] === 'player' && path[1] === 'custom_property_offers') return false;
++  if (path[0] === 'player' && (path.length === 1 || ['stamina', 'custom_property_offers'].includes(path[1]))) return false;
+   const writes = ['set', 'insert', 'assign'].includes(command.type);
+   let value = writes ? countyCommandValue(command) : undefined;
+   if (path.length === 1 && path[0] === 'scene' && writes && value?.county_name !== '金河县') return false;
+@@ -3171,13 +3169,14 @@ $(() => {
+     const state = variables?.stat_data;
+     const before = previous?.stat_data;
+     if (before?.scene?.county_name !== '金河县' || !before.player) return;
++    if (state?.player) state.player.stamina=100;
+     const binding = countyUpdateInputs.get(variables);
+     countyUpdateInputs.delete(variables);
+     if (!binding) return;
+     const { text, assistant } = binding;
+     const age = readCountyAgeCommand(text);
+     if (age) {
+-      const player = { ...before.player };
++      const player = { ...before.player,stamina:100 };
+       player.return_profile = { ...player.return_profile, age: age + '岁' };
+       variables.stat_data = { ...before, player };
+       return;
+@@ -3190,7 +3189,7 @@ $(() => {
+     if (binding.repairKeys?.length) state.county_repair = { anchor: binding.anchor, commands: binding.repairKeys };
+     else delete state.county_repair;
+ 
+-    const migrated = migrateCast(before);
++    const migrated = migrateCast({...before,player:{...before.player,stamina:100}});
+     const changed = ['scene', 'player', 'active_girls', 'turn_request'].some(key => !_.isEqual(state[key], migrated[key]));
+     const contacts = state.turn_request?.contacts ?? [];
+     const opening = applyCountyOpening(variables, previous, text);
+@@ -3268,7 +3267,7 @@ $(() => {
+       scene:clone(state.scene),people,knownIds:knownIds.filter(id=>own(people,id)),presentIds:presentIds.filter(id=>own(people,id)),
+       friends:knownIds.filter(id=>own(people,id)&&roster[id].wechat_unlocked===true),
+       affinity:Object.fromEntries(Object.values(people).map(p=>[p.id,p.affinity])),
+-      cash:state.player.cash,stamina:state.player.stamina,items:clone(state.player.items||[]),
++      cash:state.player.cash,stamina:100,items:clone(state.player.items||[]),
+       property:clone(state.player.assets||null),properties:clone(state.player.properties??{}),customPropertyOffers:clone(state.player.custom_property_offers??{}),profileLocks:clone(state.collection?.profile_locks??{}),returnProfile:Object.fromEntries(
+         Object.entries(state.player.return_profile||{}).filter(([name])=>playerFields.has(name))),
+       ledger:account.filter(line=>line.kind!=='income').map(line=>({kind:line.kind,name:line.person_name||'账目',
+@@ -3307,6 +3306,7 @@ $(() => {
+         if (record && typeof record==='object' && record.snapshot) record.snapshot=repairGirlShapes(record.snapshot);
+       }
+     }
++    state.player.stamina = 100;
+     return state;
+   }
+   function requirePerson(state,id) {
+@@ -3398,7 +3398,7 @@ $(() => {
+     state.scene.encounter_lock=present.size>0;
+   }
+   function editState(state,patch) {
+-    for (const [field,max] of [['cash',999999999999],['stamina',100]]) {
++    for (const [field,max] of [['cash',999999999999]]) {
+       if (!own(patch,field)) continue;
+       // 小手机的数字框会把金额当成字符串或带小数传回来，先规整成整数再判断范围。
+       const raw=patch[field];
+@@ -3581,7 +3581,6 @@ $(() => {
+     if (!record) throw Error('当前没有接过这个委托。');
+     if (record.acceptedFloor!==undefined&&!(action.floor>record.acceptedFloor)) throw Error('请先在正文里推进委托，再确认完工。');
+     if ((job.endId||job.placeId)!==state.scene.location_id) throw Error('请先到委托的交接地点。');
+-    if ((before.player.stamina??100)<(job.stamina||0)) throw Error('体力不足，这笔委托还未结算。');
+     countyEconomy(state,before,{earning:countyJobEarning(job)},turn,null);
+     if (state.player.receipt?.earned!==job.pay) throw Error(state.player.receipt?.reason||'报酬尚未入账。');
+     countyCompleteJob(state,before,job,turn);
+@@ -3715,6 +3714,7 @@ $(() => {
+       const path=(issue.path||[]).join('.')||'根节点';
+       throw Error('金河变量结构拒绝了本次修改：'+path+(issue.message?' · '+issue.message:''));
+     }
++    state.player.stamina = 100;
+     return state;
+   }
+   function initialize(greeting) {

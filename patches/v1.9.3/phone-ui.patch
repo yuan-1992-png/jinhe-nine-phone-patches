@@ -1,0 +1,289 @@
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\a_phone-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\b_phone-ui.html"
+index 98c26ef..b6da1a5 100644
+--- a/phone-ui.html
++++ b/phone-ui.html
+@@ -3774,17 +3774,18 @@ function forwardStatusPanel(config) {
+       forward==='relay'?'用下面填的地址、密钥和模型，但请求仍交给酒馆后端发出。浏览器不直连远端，可绕开跨域；按 OpenAI 兼容协议代发。':
+       '用下面填的地址和密钥，由浏览器直接连。需要该接口允许网页跨域。'}</p>`,
+   ];
+-  if (forward === 'host') {
+-    rows.push(`<label>预设参数<select name="presetMode">${Object.entries({follow:'沿用酒馆当前预设',pick:'选一套酒馆预设',manual:'用手填参数'})
++  {
++    rows.push(`<label>酒馆预设<select name="presetMode">${Object.entries({follow:'沿用酒馆当前预设',pick:'选一套酒馆预设',manual:'用手填参数'})
+       .map(([id,label])=>option(id,label,mode)).join('')}</select></label>`);
+     if (mode === 'pick') {
+       rows.push(presets.length
+         ? `<label>酒馆预设<select name="presetName">${option('','选择一套预设',config.presetName||'')}${presets.map(name=>option(name,name,config.presetName||'')).join('')}</select></label>`
+         : `<div class="buttons">${btn('读取酒馆预设列表','forward-presets')}</div><p class="hint">还没读到预设列表。${esc(hostPresetCache.error||'')}</p>`);
+     }
+-    rows.push(`<p class="hint">连接状态：${status.ok?esc('可用 · '+status.source+' · '+status.model+
++    rows.push('<p class="hint">选一套预设后，手机请求会带上其中已启用的提示词。剧情记忆来源可单独选择。</p>');
++    if(forward==='host') rows.push(`<p class="hint">连接状态：${status.ok?esc('可用 · '+status.source+' · '+status.model+
+       (status.preset_name?' · 预设 '+status.preset_name:'')):esc(status.reason||'不可用')}</p>`);
+-    rows.push(`<div class="buttons">${btn('刷新连接状态','forward-refresh')}</div>`);
++    if(forward==='host') rows.push(`<div class="buttons">${btn('刷新连接状态','forward-refresh')}</div>`);
+   }
+   if (forward === 'relay') {
+     rows.push(check('沿用酒馆预设的采样参数','relayPreset',config.relayPreset===true));
+@@ -4018,7 +4019,7 @@ async function sendChat(form) {
+       const local = localLines[p.dialect] || localLines.dongbei;
+       answer = local[/哪|约|去|见|到/.test(text) ? 1 : (lines.filter(line=>line.role==='user').length-1) % 3];
+     }
+-    lines.push({role:'assistant',text:answer,at:Date.now(),speaker:p.name});
++    lines.push({role:'assistant',text:answer,at:Date.now(),storyTime:scene().time_slot,speaker:p.name});
+     save();
+   } catch (error) {
+     notes[scope] = error.message + '。重发这句可再试一次。';
+@@ -5084,7 +5085,10 @@ async function handleNetworkButton(button,action) {
+     } else if (action==='chat') {
+       // 按当前转发方式测：酒馆主模型 / 后端转发 / 手机自填代发 / 自填接口，四条路都要真跑一次。
+       const route = config.forward || 'tavern';
+-      if (route === 'self') {
++      if (jinheBridge && config.presetMode==='pick') {
++        const reply=await jinheBridge.generate('只用一句简短的话回答。',[{role:'user',content:'你好，这是一条连接测试。'}],config);
++        apiStatus(kind,'连接成功 · 已使用预设 '+config.presetName+'\n'+String(reply).slice(0,180),form);
++      } else if (route === 'self') {
+         const reply=await requestChat(config,'只用一句简短的话回答。',[{role:'user',content:'你好，这是一条连接测试。'}]);
+         apiStatus(kind,`自填接口连接成功 · ${Math.round(performance.now()-started)} ms\n${reply.slice(0,180)}`,form);
+       } else if (route === 'relay') {
+@@ -5845,7 +5849,7 @@ function editPlayer() {
+   return formTitle('保存玩家修改','edit-form',
+     count('余额（元）','cash',state.cash,0,999999999999)+
+     `<div class="buttons">${[1000,10000,100000].map(n=>btn('+ '+money(n),'cash-shortcut',{amount:n})).join('')}${btn('设为 999 万','cash-shortcut',{amount:9_990_000,replace:'true'})}</div>`+
+-    range('体力','stamina',state.stamina)+btn('体力恢复至 100','quick-edit',{key:'stamina',value:100})+
++    '<p>腰力 ∞</p>'+
+     detailEditor('inventory','随身道具',
+       `<div class="buttons" id="edit-inventory-chips">${inventoryChips(state.items)}</div>`+
+       field('新增道具','newItem','','text','maxlength="100"')+btn('加入道具','add-item')+
+@@ -6015,7 +6019,7 @@ async function submitEdit(form) {
+     },p.name+'档案');
+   } else if (editorTab==='player') {
+     const returnProfile=Object.fromEntries(returnFields.map(([key])=>[key,formValue(form,'return_'+key)]));
+-    const next={cash:Number(formValue(form,'cash')),stamina:Number(formValue(form,'stamina')),
++    const next={cash:Number(formValue(form,'cash')),
+       items:listValues(formValue(form,'items')).slice(0,50),returnProfile};
+     const type=form.elements.asset.value;
+     const typeChanged=type!==(state.property?.type||'none');
+@@ -6383,7 +6387,7 @@ async function requestPhoneChat(config, system, messages, operation, includeMemo
+   // 私聊、群聊、来信、朋友圈都从这句系统提示出发，统一带上玩家身份。
+   const prompt = withPlayerIdentity(system, phonePlayerIdentity());
+   if (jinheBridge) jinheBridge.setChatConfig?.(request);
+-  if (route === 'self') return requestChat(config,includeMemory?withPhoneStorySummary(prompt,jinheBridge?.readStoryMemory?.()):prompt,
++  if (route === 'self' && !jinheBridge) return requestChat(config,includeMemory?withPhoneStorySummary(prompt,jinheBridge?.readStoryMemory?.()):prompt,
+     messages,operation?.controller.signal);
+   if (jinheBridge) return jinheBridge.generate(prompt,messages,request,operation?.id,includeMemory);
+   if (route === 'host') return hostForwardChat(prompt, messages, await resolvePhoneHostPreset(request), operation?.controller.signal);
+@@ -6598,6 +6602,44 @@ function bootHostClient() {
+     try {$('raw-host-text').value=await file.text();}
+     catch {notify('无法读取这份备份。');}
+   });
++function jinheApplySeseLines(nine, additions) {
++  const chats = nine.chats ||= {};
++  const changed = [];
++  for (const {id, lines, times=[]} of additions) {
++    const existing = chats[id] || [];
++    const ids = new Set(existing.map(line => line.id));
++    const appended = lines.filter(line => !ids.has(line.id));
++    const byId = new Map(times.map(item => [item.id,item.storyTime]));
++    let updated = false;
++    const retained = existing.map(line => {
++      const key = line.id || JSON.stringify([line.role,line.at,line.text?.slice(0,160)]);
++      const storyTime = byId.get(key);
++      if (!storyTime || line.storyTime === storyTime) return line;
++      updated = true;
++      return {...line,storyTime};
++    });
++    if (!updated && !appended.length) continue;
++    changed.push([id,chats[id]]);
++    chats[id] = appended.length ? retained.concat(appended).sort((a,b)=>(a.at||0)-(b.at||0)) : retained;
++  }
++  return changed;
++}
++window.importJinheSeseLines=additions=>{
++  const archiveState=archive[0];
++  if (!archiveState) return false;
++  const changed=jinheApplySeseLines(archiveState,additions);
++  if (!changed.length) return true;
++  if (!save()) {
++    for (const [id,lines] of changed) {
++      if (lines) archiveState.chats[id]=lines;
++      else delete archiveState.chats[id];
++    }
++    return false;
++  }
++  const focused=document.activeElement;
++  if (['contacts','chat'].includes(section)&&!$('modal').open&&!focused?.closest('form')) render();
++  return true;
++};
+   window.receiveJinheSnapshot=snapshot=>{
+     queuedHostSnapshot=structuredClone(snapshot);
+     const active=document.activeElement;
+@@ -7638,10 +7680,10 @@ function osUnread(id) {
+   return (state.chats[id]||[]).filter(line=>line.role==='assistant'&&(line.at||0)>(state.readTimes?.[id]||0)).length;
+ }
+ function osTotalUnread() { return state.friends.reduce((total,id)=>total+osUnread(id),0); }
+-function osClock(at) {
+-  if (!at) return '';
+-  return new Date(at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
+-}
++function osClock(line) {
++    const time = String(line?.storyTime || '').match(/(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?!\d)/);
++    return time ? time[1].padStart(2,'0') + ':' + time[2] : '';
++  }
+ function osAsset(id) {
+   const art=assetFor(id);
+   return art?(osIsHosted()?(art.url||source.wallpaper):encodeURI('地点图/'+art.file)):source.wallpaper;
+@@ -7712,7 +7754,7 @@ function osHome() {
+     '<button class="os-widget" data-do="open" data-page="map"><small>'+icon('map')+' 当前地点</small><strong>'+esc(scene().location_name)+
+     '</strong><em>'+esc(source.zones[scene().zone_id]||'金河县')+'</em></button>'+
+     '<button class="os-widget wallet" data-do="open" data-page="wallet"><small>金河钱包</small><strong>'+money(state.cash)+
+-    '</strong><em>体力 '+state.stamina+' / 100</em></button></div>'+
++    '</strong><em>体力 ∞</em></button></div>'+
+     '<div class="os-grid">'+apps.map(([id,label,glyph,color])=>'<button class="os-app" data-do="os-app" data-id="'+id+'">'+
+       '<span class="os-app-mark" style="--app-color:'+color+'">'+icon(glyph)+
+       (id==='contacts'&&osTotalUnread()?'<span class="unread">'+Math.min(99,osTotalUnread())+'</span>':'')+
+@@ -7760,7 +7802,7 @@ function osContacts() {
+     const caption=line?(line.kind==='gift'?'[红包] '+(line.amount?money(line.amount):'红包'):(line.role==='user'?'我：':'')+phoneMessageText(line)):(names||'还没说话');
+     return '<button class="row os-group-row" data-do="os-group-open" data-id="'+esc(group.id)+'">'+
+       '<span class="avatar os-group-avatar" aria-hidden="true">群</span><span class="grow"><strong>'+esc(group.name)+
+-      '</strong><small>'+esc(osCaption({text:caption}))+'</small></span><span class="os-message-meta"><time>'+esc(osClock(line?.at))+'</time>'+
++      '</strong><small>'+esc(osCaption({text:caption}))+'</small></span><span class="os-message-meta"><time>'+esc(osClock(line))+'</time>'+
+       (unread?'<span class="unread">'+unread+'</span>':'')+'</span></button>';
+   }).join('');
+   return '<div class="pad os-chat-list">'+osContactTabs()+
+@@ -7769,7 +7811,7 @@ function osContacts() {
+     const line=(state.chats[p.id]||[]).at(-1),unread=osUnread(p.id);
+     return '<button class="row" data-do="contact" data-id="'+esc(p.id)+'">'+avatar(p)+
+       '<span class="grow"><strong>'+esc(p.name)+'</strong><small>'+esc(osCaption(line))+'</small></span><span class="os-message-meta"><time>'+
+-      esc(osClock(line?.at))+'</time>'+(unread?'<span class="unread">'+unread+'</span>':'')+'</span></button>';
++      esc(osClock(line))+'</time>'+(unread?'<span class="unread">'+unread+'</span>':'')+'</span></button>';
+   }).join('')+(!friends.length?empty('还没有好友','可以先从通讯录认识在场的人。',btn('打开通讯录','os-chat-tab',{id:'people'})):'')+
+   '<button class="os-proactive-setting" data-do="os-proactive" aria-pressed="'+proactive+'">好友主动来信 · '+(proactive?'开':'关')+
+   '<small style="display:block;margin-top:4px">开启后，正文推进时偶尔请求手机模型生成一条新消息。</small></button></div>';
+@@ -7832,8 +7874,9 @@ function osChat() {
+   const visible=[...lines.map((line,index)=>({line,index})),...socialGiftLines(p.id).map(line=>({line,index:-1}))]
+     .sort((left,right)=>(left.line.at||0)-(right.line.at||0));
+   return '<div class="os-chat">'+visible.map(({line,index})=>{
+-    const at=line.at||0,divider=at&&(!previous||at-previous>5*60*1000)?'<div class="os-chat-time">'+esc(osClock(at))+'</div>':'';
+-    if (at) previous=at;
++    const label=osClock(line),stamp=line.storyTime||'';
++    const divider=label&&stamp!==previous?'<div class="os-chat-time">'+esc(label)+'</div>':'';
++    previous=stamp;
+     return divider+osMessageLine(line,p,index);
+   }).join('')+(waits.has(scope)?'<div class="os-message">'+avatar(p)+'<div class="bubble typing">正在输入…</div></div>':'')+
+     (!visible.length?'<div class="os-chat-time">已经是好友，发句消息吧。</div>':'')+'</div>';
+@@ -7874,8 +7917,9 @@ function osGroupChat() {
+   let previous=0;
+   const lines=osGroupLines(group);
+   return '<div class="os-chat os-group-chat">'+lines.map(line=>{
+-    const at=line.at||0,divider=at&&(!previous||at-previous>5*60*1000)?'<div class="os-chat-time">'+esc(osClock(at))+'</div>':'';
+-    if (at) previous=at;
++    const label=osClock(line),stamp=line.storyTime||'';
++    const divider=label&&stamp!==previous?'<div class="os-chat-time">'+esc(label)+'</div>':'';
++    previous=stamp;
+     return divider+osGroupBubble(line,group,group.lines.indexOf(line));
+   }).join('')+(waits.has(scope)?'<div class="os-message"><div class="bubble typing">群里正在说话…</div></div>':'')+
+     (!lines.length?'<div class="os-chat-time">'+esc(members.map(p=>p.name).join('、'))+'都在群里，说句话吧。</div>':'')+'</div>';
+@@ -7889,7 +7933,7 @@ async function osSendGroupChat(form,share) {
+   const members=group.members.map(person).filter(Boolean);
+   if (!members.length) {notify('这个群里的好友都不在了。');return;}
+   const quote=share?null:socialQuotes.get(scope),input=socialQuoteText(quote,text);
+-  (group.lines||=[]).push({id:osId(),role:'user',text,at:Date.now(),...(quote?{quote}:{}),...(share?{kind:'life-share',lifePost:share}:{})});
++  (group.lines||=[]).push({id:osId(),role:'user',text,at:Date.now(),storyTime:scene().time_slot,...(quote?{quote}:{}),...(share?{kind:'life-share',lifePost:share}:{})});
+   if(!saveGroup(group,key))return;
+   if(!share){chatInputs.delete(scope);socialQuotes.delete(scope);}
+   delete notes[scope];
+@@ -7912,7 +7956,7 @@ async function osSendGroupChat(form,share) {
+       const parts=readPhoneMessageParts(reply.text);
+       if (!parts.text) return;
+       (latest.lines||=[]).push({id:osId(),role:'assistant',personId:reply.personId,name:reply.name,
+-        text:parts.text,...(parts.thought?{thought:parts.thought}:{}),at:base+index*500,speaker:reply.name});
++        text:parts.text,...(parts.thought?{thought:parts.thought}:{}),storyTime:scene().time_slot,at:base+index*500,speaker:reply.name});
+     });
+     if(section==='group'&&activeGroup===group.id) latest.readAt=latest.lines.at(-1)?.at??base;
+     saveGroup(latest,key);
+@@ -7939,7 +7983,7 @@ async function osSendChat(form,share,newGift) {
+   const quote=share||newGift?null:socialQuotes.get(scope),allowPhoto=!newGift&&socialPhotoEligible(profile,text);
+   let message=!newGift&&previous?.role==='user'&&previous.failed&&previous.text===text?previous:null;
+   if (!message&&!newGift) {
+-    message={id:osId(),role:'user',text,at:Date.now(),...(share?{kind:'life-share',lifePost:share}:voice?{kind:'voice'}:{})};
++    message={id:osId(),role:'user',text,at:Date.now(),storyTime:scene().time_slot,...(share?{kind:'life-share',lifePost:share}:voice?{kind:'voice'}:{})};
+     if (quote) message.quote=quote;
+     lines.push(message);
+   }
+@@ -7956,12 +8000,12 @@ async function osSendChat(form,share,newGift) {
+       (allowPhoto?socialPhotoPrompt(profile,text):'')+(gift?socialGiftInstruction(gift):'');
+     const backgroundReply=osIsHosted()&&!gift;
+     const reply=backgroundReply?await jinheBridge.sendChat({
+-      id:message.id,personId:id,speaker:p.name,voice,allowPhoto,prompt,messages,config:{...settings.chat}
++      id:message.id,personId:id,speaker:p.name,storyTime:scene().time_slot,voice,allowPhoto,prompt,messages,config:{...settings.chat}
+     }):{
+       id:osId(),role:'assistant',text:osModelEnabled()?await osRequest({...settings.chat},prompt,messages,operation,true):
+         newGift?(affinity(id)>=25?'好，我收下了。[领取红包]':'先留着吧，下回见面再说。[退回红包]'):
+           share?'我看看这条，回头碰见他们再问一嘴。':(localLines[profile.dialect]||localLines.dongbei)[/约|到|见|哪/.test(text)?1:0],
+-      at:Date.now(),speaker:p.name,...(voice?{kind:'voice'}:{})
++      at:Date.now(),storyTime:scene().time_slot,speaker:p.name,...(voice?{kind:'voice'}:{})
+     };
+     if (!socialCurrent(operation)) return;
+     if (!backgroundReply) {
+@@ -8158,13 +8202,13 @@ finishPhoto=async(context,image)=>{
+   if (item.sample||context.kind!=='selfie') return item;
+   const p=context.p,index=context.index,lines=getState(index).chats[p.id]||[];
+   const line=lines.find(entry=>entry.photo===item.id);
+-  if (line) {line.at=Date.now();line.speaker=p.name;line.text='[照片]';}
++  if (line) {line.at=Date.now();line.storyTime=scene().time_slot;line.speaker=p.name;line.text='[照片]';}
+   try {
+     const caption=osModelEnabled()?await osRequest({...settings.chat},characterPrompt(p,scene(),'穿搭照片配文','selfie')+
+       '\n'+phonePrompt('photo-caption',state.phonePrompts)+' 只给一句照片配文。',
+       [{role:'user',content:'你刚发出了一张穿搭生活照。'}]):
+       ({dongbei:'这张行不？刚收拾完拍的。',zhongyuan:'给恁拍好了，瞅瞅中不中。',beijing:'得，您看看这张成不成。',sichuan:'拍好了噻，你看嘛。',cantonese:'啱啱影嘅，你睇吓得唔得。',guangxi:'刚拍好的，你看看这张靓不靓啵。'}[p.dialect]||'拍好了，你看看。');
+-    if (osAlive) lines.push({id:osId(),role:'assistant',text:caption,at:Date.now(),speaker:p.name});
++    if (osAlive) lines.push({id:osId(),role:'assistant',text:caption,at:Date.now(),storyTime:scene().time_slot,speaker:p.name});
+     save();
+   } catch(error) {notify('照片已存入，配文暂未收到 · '+error.message);}
+   return item;
+@@ -8393,7 +8437,7 @@ function bootPhoneExperience() {
+   submit['os-location-form']=form=>{
+     const id=formValue(form,'place'),place=places.get(id);
+     if(!place)return;
+-    const line={id:osId(),role:'user',kind:'location',locationId:id,text:place.name,at:Date.now()};
++    const line={id:osId(),role:'user',kind:'location',locationId:id,text:place.name,at:Date.now(),storyTime:scene().time_slot};
+     if(form.dataset.group){
+       const group=groupById(form.dataset.group);
+       if(!group)return;
+@@ -8436,7 +8480,7 @@ function bootPhoneExperience() {
+         if(state.cash<amount)throw Error('余额不足，未扣款。');
+         const previous={cash:state.cash,affinity:state.affinity,groupPayments:state.groupPayments};
+         state.cash-=amount;
+-        state.groupPayments=[...(state.groupPayments||[]),{id:requestId,groupId:group.id,amount,at:Date.now()}];
++        state.groupPayments=[...(state.groupPayments||[]),{id:requestId,groupId:group.id,amount,at:Date.now(),storyTime:scene().time_slot}];
+         state.affinity={...state.affinity};
+         for(const id of ids)state.affinity[id]=Math.min(100,(state.affinity[id]||0)+1);
+         if(!save()) {
+@@ -9291,7 +9335,7 @@ function renderLife() {
+     content='<div class="life-sub"><h3>便民委托</h3><span>随位置与时段推荐</span></div>'+lifeVisibleJobs().map(job=>
+       '<article class="life-post life-job"><div class="life-meta"><span>'+esc(lifePlace(job.placeId))+'</span><strong>'+money(job.pay)+'</strong></div>'+
+       '<small class="life-job-publisher">'+esc(knownPeople().find(p=>p.id===job.personId)?.name||job.publisher)+'</small>'+
+-      '<h3>'+esc(job.title)+'</h3><p>'+esc(job.detail)+(job.stamina?' 需要体力 '+job.stamina+'。':'')+'</p>'+
++      '<h3>'+esc(job.title)+'</h3><p>'+esc(job.detail)+'</p>'+
+       lifeJobStatus(job)+'</article>').join('');
+   }
+   return '<div class="life-screen">'+banner+tabs+'<div class="life-content" aria-busy="'+busy+'">'+content+'</div></div>';
+@@ -9697,7 +9741,7 @@ function endSocialCall(back=true) {
+   stopJinheSpeech();
+   socialStop(call.id);
+   if (call.connectedAt&&state===call.current) {
+-    conversation(call.personId).push({id:osId(),role:'system',kind:'call',at:Date.now(),video:call.video,
++    conversation(call.personId).push({id:osId(),role:'system',kind:'call',at:Date.now(),storyTime:scene().time_slot,video:call.video,
+       duration:socialCallSeconds(call),text:(call.video?'视频':'语音')+'通话 '+socialCallDuration(socialCallSeconds(call)),transcript:call.lines.slice(0,80)});
+     save();
+   }
+@@ -9863,7 +9907,7 @@ async function socialSendGift(form) {
+   try {
+     if (osIsHosted()) await hostWrite({type:'gift-create',requestId:id,id:p.id,amount,kind});
+     else if (!phoneGifts().some(gift=>gift.id===id)) {
+-      phoneGifts().push({id,personId:p.id,amount,kind,at:Date.now(),status:'pending'});
++      phoneGifts().push({id,personId:p.id,amount,kind,at:Date.now(),storyTime:scene().time_slot,status:'pending'});
+       if(!save()){phoneGifts().pop();throw Error('浏览器没有保存待领取记录。');}
+     }
+     const sent=phoneGifts().find(gift=>gift.id===id);
