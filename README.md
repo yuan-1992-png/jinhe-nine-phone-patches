@@ -6,7 +6,7 @@
 
 | 版本 | 补丁目录 | 说明 |
 | --- | --- | --- |
-| **v1.9.3（最新）** | [patches/v1.9.3/](patches/v1.9.3/) | 已适配 `v1.9.3` 新版（官方已合入自建地点买断），保留无限腰力、绿泡泡互通、熟人重登场与状态栏修复，附 `baseline.json` 校验摘要 |
+| **v1.9.3（最新）** | [patches/v1.9.3/](patches/v1.9.3/) | 已适配 `v1.9.3` 新版（官方已合入自建地点买断），新增**自动 `YYYY-MM-DD` 日期追踪（`scene.date`）**，保留无限腰力、绿泡泡互通、熟人重登场与状态栏修复，附 `baseline.json` 校验摘要 |
 | **v1.8.7** | [patches/v1.8.7/](patches/v1.8.7/) | 拆分可审阅的 `phone-host.patch`、`phone-ui.patch`、`zod.patch`、`turn.patch`、`status-ui.patch` 与 `baseline.json` |
 | **v1.6.4** | [patches/](patches/) | 最初基线版本，配套 `scripts/apply.mjs` 一键生成合并预览 |
 
@@ -22,6 +22,7 @@
 
 | 模块 | 改动 |
 | --- | --- |
+| 自动日期追踪（`v1.9.3`） | 以 `2026-01-02`（第 1 天，周五）为基准，在 `Zod` 回合结算时自动计算并推进 `scene.date`（`YYYY-MM-DD`），即使跨越多周也不会重复；同步注入回合资料提示词（方便台账直接读取，无需依赖正文时间锚点），并在同楼层状态栏、九号机主页/顶栏与金手指日期选择器中完整显示和联动修改。 |
 | 聊天模型 | 九号机单独配置 OpenAI 兼容地址、密钥和模型，可经酒馆后端转发。所选酒馆预设的已启用提示词会加入请求。 |
 | 绿泡泡 | 私聊记录支持逐条删除和清空。可选适配瑟瑟小手机 V1.308，在同一份金河聊天内同步唯一匹配的好友和每个会话最近 250 条文字或语音转写。 |
 | 消息时间与性能 | 绿泡泡按剧情时间显示。双端已有对应记录时按消息 ID 补时间。空闲时只检查变化，滚出屏幕的金河县状态栏暂停定时扫描。 |
@@ -67,6 +68,6 @@ node scripts/apply.mjs original-card.json preview --world original-world.json
 
 ## 验证
 
-- `v1.9.3` 移植脚本（`zod.js`、`turn.js`、`phone.js` 及内嵌 HTML/JSON 块）已通过 Node.js 语法与结构校验。
+- `v1.9.3` 移植脚本（`zod.js`、`turn.js`、`phone.js` 及内嵌 HTML/JSON 块）与 `scene.date` 跨周日期计算已通过 Node.js 语法与断言测试。
 - `jinhe-phone-settings-sync` 已通过本机/远程 API 分档隔离、共享同步、悬浮球坐标排除与 `iframe` `SillyTavern` 注入单元测试。
 - 合并预览、ComfyUI 生图工作流、选定预设注入、收款失败重试、无限腰力、消息互通与任务提示词输出均已完成验证。
