@@ -1,0 +1,22 @@
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v187-patches\\a_status-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v187-patches\\b_status-ui.html"
+index 6ac2aa2..4e591ee 100644
+--- a/status-ui.html
++++ b/status-ui.html
+@@ -949,7 +949,7 @@
+       <span class="csg-chip loc" data-bind="location_name">📍 解放路·鬼火霓虹夜市</span>
+       <span class="csg-chip time" data-bind="time_slot">🕒 周五 21:40</span>
+       <span class="csg-chip cash">💴 <strong data-bind="cash">1280</strong> 元</span>
+-      <span class="csg-chip stamina">⚡ 腰力 <strong data-bind="stamina">100</strong>%</span>
++      <span class="csg-chip stamina">⚡ 腰力 <strong data-bind="stamina">∞</strong></span>
+       <span class="csg-chip" data-bind="lock_badge">🎲 可以偶遇新角色</span>
+     </div>
+ 
+@@ -2134,7 +2134,7 @@ function requestsCountyPrivateMode(text) {
+         emptyPanel.textContent = '沿街转转，或找个人搭句话。';
+         setText('lock_badge', present ? cast.length + ' 人在场' : '🎲 可以偶遇新角色');
+         setText('cash', readNumber(player.cash) ?? '—');
+-        setText('stamina', readNumber(player.stamina, 100) ?? '—');
++        setText('stamina', '∞');
+ 
+         const activeDialects = new Set(cast.map(([, person]) => person.dialect));
+         let unlockedCount = 0;

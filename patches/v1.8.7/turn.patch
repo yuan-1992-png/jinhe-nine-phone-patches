@@ -1,0 +1,76 @@
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v187-patches\\a_turn.js" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v187-patches\\b_turn.js"
+index 953c93e..c5b36ee 100644
+--- a/turn.js
++++ b/turn.js
+@@ -143,11 +143,16 @@ function countyPropertyNames(offer) {
+   return [offer.property, offer.locationName, ...(offer.aliases ?? []), offer.label].filter(Boolean);
+ }
+ 
+-function readCountyPurchaseCommand(text) {
++function countyPropertyCatalog(player) {
++  return { ...player?.custom_property_offers, ...assetTypes };
++}
++
++function readCountyPurchaseCommand(text, player) {
+   const target = String(text ?? '').trim()
+     .match(/^(?:我\s*)?(?:确认\s*)?(?:全款\s*)?(?:买断|买下)\s*[:：]?\s*(.+?)[。！!]?$/u)?.[1]?.trim();
+   if (!target) return undefined;
+-  return Object.keys(assetTypes).find(type => countyPropertyNames(assetTypes[type])
++  const catalog = countyPropertyCatalog(player);
++  return Object.keys(catalog).find(type => countyPropertyNames(catalog[type])
+     .some(name => name.toLowerCase() === target.toLowerCase()));
+ }
+ 
+@@ -157,8 +162,8 @@ function countyMoneyValue(value) {
+   return match ? Number(match[1].replace(/[,，]/g, '')) : value;
+ }
+ 
+-function countyNamedProperty(text, lease = false) {
+-  const names = Object.entries(assetTypes).flatMap(([id, offer]) =>
++function countyNamedProperty(text, lease = false, player) {
++  const names = Object.entries(lease ? assetTypes : countyPropertyCatalog(player)).flatMap(([id, offer]) =>
+     lease && !offer.max ? [] : [id, ...countyPropertyNames(offer)]
+       .filter(name => name.length >= 2 && text.includes(name)).map(name => ({id, length:name.length})));
+   const longest = Math.max(0, ...names.map(match => match.length));
+@@ -174,8 +179,9 @@ function countyPropertyCommit(text, action) {
+ }
+ 
+ function countyPurchaseProblem(player, type) {
+-  const offer = Object.hasOwn(assetTypes, type) ? assetTypes[type] : null;
+-  if (!offer) return '没有可买断的这处物业，未扣款';
++  const catalog = countyPropertyCatalog(player);
++  const offer = Object.hasOwn(catalog, type) ? catalog[type] : null;
++  if (!offer || !Number.isSafeInteger(offer.price) || offer.price <= 0 || offer.price > 999999999999) return '没有可买断的这处物业，未扣款';
+   if (player.properties?.[type]) return '已经拥有这处物业，未重复扣款';
+   if (player.cash < offer.price) return '余额不足，未扣款';
+   return '';
+@@ -771,9 +777,9 @@ function renderCountyTurn({ text, stat, getLore, plan, dialogueLanguage, playerF
+   if (readCountyAgeCommand(String(text || ''))) {
+     return '本条是场外设置。只确认设定年龄已记录并输出状态栏占位符。保持时间、在场人物与账目。若附有变量更新规则，提交空更新。';
+   }
+-  const purchaseType = readCountyPurchaseCommand(text);
++  const purchaseType = readCountyPurchaseCommand(text, playerForPrompt);
+   if (purchaseType) {
+-    const offer = assetTypes[purchaseType];
++    const offer = countyPropertyCatalog(playerForPrompt)[purchaseType];
+     const problem = countyPurchaseProblem(playerForPrompt, purchaseType);
+     const quote = problem || '全款 ' + offer.price + ' 元，买断后登记为自有物业';
+     return '本条是玩家确认买断指令。只简短确认' + offer.property + '：' + quote +
+@@ -913,7 +919,7 @@ ${serializeState(Object.fromEntries(invited.map(([id, entry]) => [id,
+     output.push(`逐个核对：本轮正文里{{user}}每一次真正掏钱的动作（扫码、付现金、微信转账、发红包、买单、替人垫付、给自己买东西），都必须在同一个 turn_request.charges 里各登记一笔。只登记正文真正付掉的，报价和没付成的不算；正文写了花钱却不登记，账本会和剧情对不上，等于这钱没花出去。`);
+   }
+   if (/买断|买房|买下|房价|购置|产权|盘店|全款/u.test(input)) {
+-    const named = Object.values(assetTypes).filter(offer => countyPropertyNames(offer)
++    const named = Object.values(countyPropertyCatalog(playerForPrompt)).filter(offer => countyPropertyNames(offer)
+       .some(name => name.length >= 3 && input.includes(name)));
+     const relevant = named.length ? named : Object.values(assetTypes).filter(offer => offer.location === currentId);
+     if (relevant.length) output.push('固定买断价：' + relevant.map(offer => offer.property + ' ' + offer.price + ' 元').join('；') + '。');
+@@ -1000,7 +1006,7 @@ function renderCountyVariableList(stat, text, offers) {
+   const data = {
+     scene: { location_id: scene.location_id, location_name: scene.location_name, spot: scene.spot,
+       time_slot: scene.time_slot, day: scene.day },
+-    player: { cash: player.cash, stamina: player.stamina, items: player.items, assets: player.assets, properties: player.properties },
++    player: { cash: player.cash, stamina: 100, items: player.items, assets: player.assets, properties: player.properties },
+     active_girls: cast, contact_index: roster, recent_moments: recentMoments, event_id: stat.event_queue?.next,
+     pending_life_jobs:jobs.length?jobs.map(job=>({id:job.id,title:job.title,detail:job.detail,
+       location_id:job.placeId,finish_location_id:job.endId||job.placeId,agreed_reward:job.pay,
