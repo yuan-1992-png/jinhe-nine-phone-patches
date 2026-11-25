@@ -1,8 +1,24 @@
-# 金河九号机 v1.6.4 补丁
+# 金河九号机补丁与扩展（支持 v1.6.4 / v1.8.7 / v1.9.3）
 
-源自对金河 v1.6.4 的本地适配。提供模块补丁、工作流和生成合并预览的工具，供角色卡作者审阅。
+源自对金河县九号随身机的持续本地适配，现已支持 **`v1.6.4`、`v1.8.7`、`v1.9.3`** 三个版本的模块补丁，并提供**零侵入跨端同步与酒馆代发修复扩展**、ComfyUI 工作流与合并预览工具。
 
-## 改动
+## 版本支持一览
+
+| 版本 | 补丁目录 | 说明 |
+| --- | --- | --- |
+| **v1.9.3（最新）** | [patches/v1.9.3/](patches/v1.9.3/) | 已适配 `v1.9.3` 新版（官方已合入自建地点买断），保留无限腰力、绿泡泡互通、熟人重登场与状态栏修复，附 `baseline.json` 校验摘要 |
+| **v1.8.7** | [patches/v1.8.7/](patches/v1.8.7/) | 拆分可审阅的 `phone-host.patch`、`phone-ui.patch`、`zod.patch`、`turn.patch`、`status-ui.patch` 与 `baseline.json` |
+| **v1.6.4** | [patches/](patches/) | 最初基线版本，配套 `scripts/apply.mjs` 一键生成合并预览 |
+
+## 零侵入扩展（全版本通用，推荐安装）
+
+- **[integrations/jinhe-phone-settings-sync/](integrations/jinhe-phone-settings-sync/README.md)**（SillyTavern 用户扩展，无需改动角色卡）：
+  - **跨浏览器 / 跨设备同步**：将 `jinhe-phone-*` 通用设置（主题、外观、生图预设、TTS 音色、自定义地点、主设置、朋友圈数等）自动同步至酒馆服务端，换浏览器或 Mac/手机远程连接不再丢失。
+  - **本机 / 远程 API 自动分档**：`jinhe-phone-api-settings-v1` 按访问来源自动分离为 `local`（本机 `127.0.0.1`/`localhost`）与 `remote`（Tailscale/局域网远程）两套档案，互不覆盖。
+  - **悬浮球位置本地隔离**：`jinhe-phone-launch-position-v1` 保留在各设备本地，避免不同屏幕分辨率错位。
+  - **自动修复 `v1.8.7+` 酒馆代发报错**：自动向 `iframe[title="金河九号随身机"]` 注入父窗口 `SillyTavern` 与同步钩子，彻底解决「手机自填，由酒馆代发」报“要在酒馆里打开九号机才能用”的问题。
+
+## 核心改动
 
 | 模块 | 改动 |
 | --- | --- |
@@ -20,34 +36,37 @@
 
 ## 审阅位置
 
-- [手机宿主](patches/phone-host.patch)和[手机页面](patches/phone-ui.patch)分别对应九号机脚本外层和内嵌的 `phoneHtml`。
-- [MVU Zod](patches/zod.patch)、[回合脚本](patches/turn.patch)和[世界书改动](docs/worldbook.md)对应结算、腰力和正文指令。
-- [状态栏刷新补丁](patches/status-ui.patch)和[状态栏挂载脚本](integrations/status-host.js)对应原卡「金河县 · 同楼层状态栏」显示规则。两处应一起合并。如果修改了角色卡头像文件名，也需调整挂载脚本的作用域常量。
-- [瑟瑟小手机适配器](integrations/sese-phone-1308.js)依赖 V1.308 维护版。此组件用于绿泡泡互通。
-- [衣柜工作流](workflows/jianxia-wardrobe-api.json)和[自拍工作流](workflows/jianxia-selfie-api.json)采用 ComfyUI API 格式。模型和 LoRA 文件名沿用剑侠整合包布局，需与本机模型目录匹配。
+- **v1.9.3（最新）**：`patches/v1.9.3/`（`phone-host.patch`、`phone-ui.patch`、`zod.patch`、`turn.patch`、`status-ui.patch`、`baseline.json`）
+- **v1.8.7**：`patches/v1.8.7/`（同上结构）
+- **v1.6.4**：[手机宿主](patches/phone-host.patch)、[手机页面](patches/phone-ui.patch)、[MVU Zod](patches/zod.patch)、[回合脚本](patches/turn.patch)、[状态栏刷新补丁](patches/status-ui.patch)与[世界书改动](docs/worldbook.md)
+- **扩展与联动组件**：
+  - [九号机设置跨端同步扩展](integrations/jinhe-phone-settings-sync/README.md)（零侵入，全版本通用）
+  - [状态栏挂载脚本](integrations/status-host.js)
+  - [瑟瑟小手机适配器](integrations/sese-phone-1308.js)（依赖 V1.308 维护版）
+  - [衣柜工作流](workflows/jianxia-wardrobe-api.json)与[自拍工作流](workflows/jianxia-selfie-api.json)（ComfyUI API 格式，沿用剑侠整合包布局）
 
-## 生成合并预览
+## 生成合并预览（v1.6.4 自动化脚本）
 
-需要 Node.js 和 Git。输入原版 v1.6.4 的 JSON 格式角色卡。
+需要 Node.js 和 Git。输入原版 v1.6.4 的 JSON 格式角色卡：
 
 ```sh
 node scripts/apply.mjs original-card.json preview
 ```
 
-若有单独加载的世界书，可同时生成改后的世界书。
+若有单独加载的世界书，可同时生成改后的世界书：
 
 ```sh
 node scripts/apply.mjs original-card.json preview --world original-world.json
 ```
 
-输出为新的 JSON 角色卡。工具校验原版三个脚本和状态栏规则的摘要，再应用补丁。源码不同的版本应按补丁审阅并手动合并。
+输出为新的 JSON 角色卡。工具校验原版三个脚本和状态栏规则的摘要，再应用补丁。`v1.8.7` / `v1.9.3` 可直接按 `patches/v1.8.7/` 或 `patches/v1.9.3/` 对应补丁审阅并合并。
 
 仓库的六类生图任务使用同一用途和输出协议的兼容模板。通过 `--task-prompts own-templates.json` 可传入自有模板，结构见[模板样例](integrations/task-prompts.json)。
 
-可选参数 `--sese-phone original-sese.script.json` 可为 V1.308 维护版的单脚本 JSON 导出生成适配副本。适配按精确角色卡文件名和聊天隔离。更换头像文件名时，需同步调整两端的作用域常量。
-
-台账适配使用 `--sese-ledger original-ledger.script.json`，输入瑟瑟台账 V1.165 的单脚本 JSON 导出。输出目录中会多一份带生日保护的台账脚本。
+可选参数 `--sese-phone original-sese.script.json` 可为 V1.308 维护版的单脚本 JSON 导出生成适配副本；`--sese-ledger original-ledger.script.json` 可生成带生日保护的台账脚本。
 
 ## 验证
 
-合并预览可复核补丁应用和语法。原本机通过酒馆后端实际生成了无人物衣柜图和正常自拍。选定预设注入、收款失败重试、无限腰力、消息互通、快速测试参数与任务提示词输出使用模拟数据验证。
+- `v1.9.3` 移植脚本（`zod.js`、`turn.js`、`phone.js` 及内嵌 HTML/JSON 块）已通过 Node.js 语法与结构校验。
+- `jinhe-phone-settings-sync` 已通过本机/远程 API 分档隔离、共享同步、悬浮球坐标排除与 `iframe` `SillyTavern` 注入单元测试。
+- 合并预览、ComfyUI 生图工作流、选定预设注入、收款失败重试、无限腰力、消息互通与任务提示词输出均已完成验证。
