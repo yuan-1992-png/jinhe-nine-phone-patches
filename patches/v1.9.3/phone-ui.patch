@@ -1,8 +1,33 @@
-diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\a_phone-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\b_phone-ui.html"
-index 98c26ef..b6da1a5 100644
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-date\\tmpdiff\\a_phone-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-date\\tmpdiff\\b_phone-ui.html"
+index 98c26ef..a1c73dd 100644
 --- a/phone-ui.html
 +++ b/phone-ui.html
-@@ -3774,17 +3774,18 @@ function forwardStatusPanel(config) {
+@@ -3294,6 +3294,15 @@ const option = (value, label, selected) => `<option value="${esc(value)}" ${sele
+ const check = (label,name,selected) => `<label class="check"><input name="${name}" type="checkbox" ${selected ? 'checked' : ''}>${label}</label>`;
+ const formValue = (form,name) => String(new FormData(form).get(name) || '').trim();
+ const clockTime = () => scene().time_slot.split(' ')[1];
++const dateFromDay = (day) => new Date(Date.UTC(2026, 0, 1 + Math.max(1, Math.round(Number(day) || 1)))).toISOString().slice(0, 10);
++const dayFromDate = (str) => {
++  const m = String(str || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
++  if (!m) return null;
++  const diff = Math.round((Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - Date.UTC(2026, 0, 1)) / 86400000);
++  return Math.max(1, Math.min(999999, diff));
++};
++const sceneDate = () => /^\d{4}-\d{2}-\d{2}$/.test(scene().date || '') ? scene().date : dateFromDay(scene().day);
++const sceneFullTime = () => sceneDate() + ' ' + scene().time_slot;
+ const placeTitle = () => [scene().location_name,scene().spot].filter(Boolean).join(' · ');
+ const person = id => source.people[id] ? currentPerson(id) : null;
+ const peopleHere = currentCast;
+@@ -3377,7 +3386,7 @@ function renderHome() {
+   const art = assetFor(scene().location_id);
+   const wallpaper = photoURL(photos.find(item => item.id === state.wallpaper)) || (art ? encodeURI("地点图/" + art.file) : source.wallpaper);
+   return `<div class="home-screen">
+-    <div class="home-time"><time>${esc(clockTime())}</time><div class="day">${esc(scene().time_slot.split(' ')[0])}<span>金河县 · 第 ${scene().day} 天</span></div></div>
++    <div class="home-time"><time>${esc(clockTime())}</time><div class="day">${esc(sceneDate())} ${esc(scene().time_slot.split(' ')[0])}<span>金河县 · 第 ${scene().day} 天</span></div></div>
+     <button class="hero" data-do="open" data-page="map" style="background-image:url('${esc(wallpaper)}'),url('${source.wallpaper}')">
+       <small>${icon('map')} 当前地点</small><strong>${esc(placeTitle())}</strong><span class="hero-sub">${esc(source.zones[scene().zone_id] || '金河县')}</span><span class="go">${icon('arrow')}</span>
+     </button>
+@@ -3774,17 +3783,18 @@ function forwardStatusPanel(config) {
        forward==='relay'?'用下面填的地址、密钥和模型，但请求仍交给酒馆后端发出。浏览器不直连远端，可绕开跨域；按 OpenAI 兼容协议代发。':
        '用下面填的地址和密钥，由浏览器直接连。需要该接口允许网页跨域。'}</p>`,
    ];
@@ -25,7 +50,16 @@ index 98c26ef..b6da1a5 100644
    }
    if (forward === 'relay') {
      rows.push(check('沿用酒馆预设的采样参数','relayPreset',config.relayPreset===true));
-@@ -4018,7 +4019,7 @@ async function sendChat(form) {
+@@ -3906,7 +3916,7 @@ function render(resetScroll = false) {
+   $('status-time').textContent = section === 'home' ? '金河' : clockTime();
+   $('opening').value = opening;
+   $('rail-location').textContent = placeTitle();
+-  $('rail-time').textContent = scene().time_slot + ' · ' + source.zones[scene().zone_id];
++  $('rail-time').textContent = sceneFullTime() + ' · ' + source.zones[scene().zone_id];
+   if ($('desktop-draft').value !== state.draft) $('desktop-draft').value = state.draft;
+   $('desktop-mode').textContent = settings.chat.live ? '聊天接口已启用' : '离线演示可用';
+   if (section === 'map') drawMap();
+@@ -4018,7 +4028,7 @@ async function sendChat(form) {
        const local = localLines[p.dialect] || localLines.dongbei;
        answer = local[/哪|约|去|见|到/.test(text) ? 1 : (lines.filter(line=>line.role==='user').length-1) % 3];
      }
@@ -34,7 +68,7 @@ index 98c26ef..b6da1a5 100644
      save();
    } catch (error) {
      notes[scope] = error.message + '。重发这句可再试一次。';
-@@ -5084,7 +5085,10 @@ async function handleNetworkButton(button,action) {
+@@ -5084,7 +5094,10 @@ async function handleNetworkButton(button,action) {
      } else if (action==='chat') {
        // 按当前转发方式测：酒馆主模型 / 后端转发 / 手机自填代发 / 自填接口，四条路都要真跑一次。
        const route = config.forward || 'tavern';
@@ -46,7 +80,7 @@ index 98c26ef..b6da1a5 100644
          const reply=await requestChat(config,'只用一句简短的话回答。',[{role:'user',content:'你好，这是一条连接测试。'}]);
          apiStatus(kind,`自填接口连接成功 · ${Math.round(performance.now()-started)} ms\n${reply.slice(0,180)}`,form);
        } else if (route === 'relay') {
-@@ -5845,7 +5849,7 @@ function editPlayer() {
+@@ -5845,7 +5858,7 @@ function editPlayer() {
    return formTitle('保存玩家修改','edit-form',
      count('余额（元）','cash',state.cash,0,999999999999)+
      `<div class="buttons">${[1000,10000,100000].map(n=>btn('+ '+money(n),'cash-shortcut',{amount:n})).join('')}${btn('设为 999 万','cash-shortcut',{amount:9_990_000,replace:'true'})}</div>`+
@@ -55,7 +89,30 @@ index 98c26ef..b6da1a5 100644
      detailEditor('inventory','随身道具',
        `<div class="buttons" id="edit-inventory-chips">${inventoryChips(state.items)}</div>`+
        field('新增道具','newItem','','text','maxlength="100"')+btn('加入道具','add-item')+
-@@ -6015,7 +6019,7 @@ async function submitEdit(form) {
+@@ -5873,6 +5886,7 @@ function editScene() {
+     appSelect('选择地点','location',locationOptions(now.location_id))+sceneImage(now.location_id)+
+     field('具体位置','spot',now.spot,'text','maxlength="80" list="edit-scene-spots"')+spotOptions(now.location_id)+
+     count('当前天数','day',now.day||1,1,999999)+
++    field('日期','date',sceneDate(),'date','min="2026-01-02" required')+
+     field('时间','time',now.time_slot,'text','maxlength="12" placeholder="周五 23:30" required')+
+     `<div class="buttons">${['09:00','15:00','18:30','21:30','23:30','00:30'].map(time=>btn(time,'edit-time',{time})).join('')}</div>`+
+     longField('环境备注','vibe',now.vibe_note,180)+
+@@ -5991,10 +6005,12 @@ function renderEditor() {
+   return `<div class="pad stack"><div class="filters" aria-label="快改页面">${editorTabs.map(([id,title])=>`<button class="filter" data-do="edit-tab" data-id="${id}" aria-pressed="${editorTab===id}">${title}</button>`).join('')}</div>
+     <p class="feedback" role="status">${esc(editNotice)}</p>${content()}</div>`;
+ }
+-function nextScene(old,id,when,day,spot,vibe) {
++function nextScene(old,id,when,day,spot,vibe,date) {
+   const p=places.get(id);
+   if (!p || !/^周[一二三四五六日] (?:[01]\d|2[0-3]):[0-5]\d$/.test(when)) throw Error('请选择有效地点，并用「周五 23:30」的格式填时间');
+-  return {...old,location_id:p.id,location_name:p.name,zone_id:p.zone,time_slot:when,day,spot,vibe_note:vibe};
++  const resolvedDay = Math.max(1, Math.min(999999, Number(day) || dayFromDate(date) || 1));
++  const resolvedDate = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : dateFromDay(resolvedDay);
++  return {...old,location_id:p.id,location_name:p.name,zone_id:p.zone,time_slot:when,day:resolvedDay,date:resolvedDate,spot,vibe_note:vibe};
+ }
+ 
+ async function submitEdit(form) {
+@@ -6015,7 +6031,7 @@ async function submitEdit(form) {
      },p.name+'档案');
    } else if (editorTab==='player') {
      const returnProfile=Object.fromEntries(returnFields.map(([key])=>[key,formValue(form,'return_'+key)]));
@@ -64,7 +121,25 @@ index 98c26ef..b6da1a5 100644
        items:listValues(formValue(form,'items')).slice(0,50),returnProfile};
      const type=form.elements.asset.value;
      const typeChanged=type!==(state.property?.type||'none');
-@@ -6383,7 +6387,7 @@ async function requestPhoneChat(config, system, messages, operation, includeMemo
+@@ -6037,7 +6053,7 @@ async function submitEdit(form) {
+     const vibe=id===scene().location_id || form.elements.vibe.value!==form.elements.vibe.defaultValue?formValue(form,'vibe'):'';
+     const presentIds=new FormData(form).getAll('attendance');
+     await recordEdit({
+-      scenePatch:nextScene(scene(),id,formValue(form,'time'),Number(formValue(form,'day')),spot,vibe),
++      scenePatch:nextScene(scene(),id,formValue(form,'time'),Number(formValue(form,'day')),spot,vibe,formValue(form,'date')),
+       presentIds,knownIds:[...new Set([...state.knownIds,...presentIds])]
+     },'场景');
+   }
+@@ -6087,7 +6103,7 @@ function assertPreviewJSON(parsed) {
+   const values={...parsed.values};
+   if (values.scenePatch) {
+     const s=values.scenePatch;
+-    values.scenePatch=nextScene(source.openings[opening].scene,s.location_id,s.time_slot,s.day,s.spot,s.vibe_note);
++    values.scenePatch=nextScene(source.openings[opening].scene,s.location_id,s.time_slot,s.day,s.spot,s.vibe_note,s.date);
+   }
+   if (values.profiles) values.phoneFeedback=matchingPhoneFeedback(values.profiles);
+   return values;
+@@ -6383,7 +6399,7 @@ async function requestPhoneChat(config, system, messages, operation, includeMemo
    // 私聊、群聊、来信、朋友圈都从这句系统提示出发，统一带上玩家身份。
    const prompt = withPlayerIdentity(system, phonePlayerIdentity());
    if (jinheBridge) jinheBridge.setChatConfig?.(request);
@@ -73,7 +148,7 @@ index 98c26ef..b6da1a5 100644
      messages,operation?.controller.signal);
    if (jinheBridge) return jinheBridge.generate(prompt,messages,request,operation?.id,includeMemory);
    if (route === 'host') return hostForwardChat(prompt, messages, await resolvePhoneHostPreset(request), operation?.controller.signal);
-@@ -6598,6 +6602,44 @@ function bootHostClient() {
+@@ -6598,6 +6614,44 @@ function bootHostClient() {
      try {$('raw-host-text').value=await file.text();}
      catch {notify('无法读取这份备份。');}
    });
@@ -118,7 +193,7 @@ index 98c26ef..b6da1a5 100644
    window.receiveJinheSnapshot=snapshot=>{
      queuedHostSnapshot=structuredClone(snapshot);
      const active=document.activeElement;
-@@ -7638,10 +7680,10 @@ function osUnread(id) {
+@@ -7638,10 +7692,10 @@ function osUnread(id) {
    return (state.chats[id]||[]).filter(line=>line.role==='assistant'&&(line.at||0)>(state.readTimes?.[id]||0)).length;
  }
  function osTotalUnread() { return state.friends.reduce((total,id)=>total+osUnread(id),0); }
@@ -133,7 +208,7 @@ index 98c26ef..b6da1a5 100644
  function osAsset(id) {
    const art=assetFor(id);
    return art?(osIsHosted()?(art.url||source.wallpaper):encodeURI('地点图/'+art.file)):source.wallpaper;
-@@ -7712,7 +7754,7 @@ function osHome() {
+@@ -7712,7 +7766,7 @@ function osHome() {
      '<button class="os-widget" data-do="open" data-page="map"><small>'+icon('map')+' 当前地点</small><strong>'+esc(scene().location_name)+
      '</strong><em>'+esc(source.zones[scene().zone_id]||'金河县')+'</em></button>'+
      '<button class="os-widget wallet" data-do="open" data-page="wallet"><small>金河钱包</small><strong>'+money(state.cash)+
@@ -142,7 +217,7 @@ index 98c26ef..b6da1a5 100644
      '<div class="os-grid">'+apps.map(([id,label,glyph,color])=>'<button class="os-app" data-do="os-app" data-id="'+id+'">'+
        '<span class="os-app-mark" style="--app-color:'+color+'">'+icon(glyph)+
        (id==='contacts'&&osTotalUnread()?'<span class="unread">'+Math.min(99,osTotalUnread())+'</span>':'')+
-@@ -7760,7 +7802,7 @@ function osContacts() {
+@@ -7760,7 +7814,7 @@ function osContacts() {
      const caption=line?(line.kind==='gift'?'[红包] '+(line.amount?money(line.amount):'红包'):(line.role==='user'?'我：':'')+phoneMessageText(line)):(names||'还没说话');
      return '<button class="row os-group-row" data-do="os-group-open" data-id="'+esc(group.id)+'">'+
        '<span class="avatar os-group-avatar" aria-hidden="true">群</span><span class="grow"><strong>'+esc(group.name)+
@@ -151,7 +226,7 @@ index 98c26ef..b6da1a5 100644
        (unread?'<span class="unread">'+unread+'</span>':'')+'</span></button>';
    }).join('');
    return '<div class="pad os-chat-list">'+osContactTabs()+
-@@ -7769,7 +7811,7 @@ function osContacts() {
+@@ -7769,7 +7823,7 @@ function osContacts() {
      const line=(state.chats[p.id]||[]).at(-1),unread=osUnread(p.id);
      return '<button class="row" data-do="contact" data-id="'+esc(p.id)+'">'+avatar(p)+
        '<span class="grow"><strong>'+esc(p.name)+'</strong><small>'+esc(osCaption(line))+'</small></span><span class="os-message-meta"><time>'+
@@ -160,7 +235,7 @@ index 98c26ef..b6da1a5 100644
    }).join('')+(!friends.length?empty('还没有好友','可以先从通讯录认识在场的人。',btn('打开通讯录','os-chat-tab',{id:'people'})):'')+
    '<button class="os-proactive-setting" data-do="os-proactive" aria-pressed="'+proactive+'">好友主动来信 · '+(proactive?'开':'关')+
    '<small style="display:block;margin-top:4px">开启后，正文推进时偶尔请求手机模型生成一条新消息。</small></button></div>';
-@@ -7832,8 +7874,9 @@ function osChat() {
+@@ -7832,8 +7886,9 @@ function osChat() {
    const visible=[...lines.map((line,index)=>({line,index})),...socialGiftLines(p.id).map(line=>({line,index:-1}))]
      .sort((left,right)=>(left.line.at||0)-(right.line.at||0));
    return '<div class="os-chat">'+visible.map(({line,index})=>{
@@ -172,7 +247,7 @@ index 98c26ef..b6da1a5 100644
      return divider+osMessageLine(line,p,index);
    }).join('')+(waits.has(scope)?'<div class="os-message">'+avatar(p)+'<div class="bubble typing">正在输入…</div></div>':'')+
      (!visible.length?'<div class="os-chat-time">已经是好友，发句消息吧。</div>':'')+'</div>';
-@@ -7874,8 +7917,9 @@ function osGroupChat() {
+@@ -7874,8 +7929,9 @@ function osGroupChat() {
    let previous=0;
    const lines=osGroupLines(group);
    return '<div class="os-chat os-group-chat">'+lines.map(line=>{
@@ -184,7 +259,7 @@ index 98c26ef..b6da1a5 100644
      return divider+osGroupBubble(line,group,group.lines.indexOf(line));
    }).join('')+(waits.has(scope)?'<div class="os-message"><div class="bubble typing">群里正在说话…</div></div>':'')+
      (!lines.length?'<div class="os-chat-time">'+esc(members.map(p=>p.name).join('、'))+'都在群里，说句话吧。</div>':'')+'</div>';
-@@ -7889,7 +7933,7 @@ async function osSendGroupChat(form,share) {
+@@ -7889,7 +7945,7 @@ async function osSendGroupChat(form,share) {
    const members=group.members.map(person).filter(Boolean);
    if (!members.length) {notify('这个群里的好友都不在了。');return;}
    const quote=share?null:socialQuotes.get(scope),input=socialQuoteText(quote,text);
@@ -193,7 +268,7 @@ index 98c26ef..b6da1a5 100644
    if(!saveGroup(group,key))return;
    if(!share){chatInputs.delete(scope);socialQuotes.delete(scope);}
    delete notes[scope];
-@@ -7912,7 +7956,7 @@ async function osSendGroupChat(form,share) {
+@@ -7912,7 +7968,7 @@ async function osSendGroupChat(form,share) {
        const parts=readPhoneMessageParts(reply.text);
        if (!parts.text) return;
        (latest.lines||=[]).push({id:osId(),role:'assistant',personId:reply.personId,name:reply.name,
@@ -202,7 +277,7 @@ index 98c26ef..b6da1a5 100644
      });
      if(section==='group'&&activeGroup===group.id) latest.readAt=latest.lines.at(-1)?.at??base;
      saveGroup(latest,key);
-@@ -7939,7 +7983,7 @@ async function osSendChat(form,share,newGift) {
+@@ -7939,7 +7995,7 @@ async function osSendChat(form,share,newGift) {
    const quote=share||newGift?null:socialQuotes.get(scope),allowPhoto=!newGift&&socialPhotoEligible(profile,text);
    let message=!newGift&&previous?.role==='user'&&previous.failed&&previous.text===text?previous:null;
    if (!message&&!newGift) {
@@ -211,7 +286,7 @@ index 98c26ef..b6da1a5 100644
      if (quote) message.quote=quote;
      lines.push(message);
    }
-@@ -7956,12 +8000,12 @@ async function osSendChat(form,share,newGift) {
+@@ -7956,12 +8012,12 @@ async function osSendChat(form,share,newGift) {
        (allowPhoto?socialPhotoPrompt(profile,text):'')+(gift?socialGiftInstruction(gift):'');
      const backgroundReply=osIsHosted()&&!gift;
      const reply=backgroundReply?await jinheBridge.sendChat({
@@ -226,7 +301,7 @@ index 98c26ef..b6da1a5 100644
      };
      if (!socialCurrent(operation)) return;
      if (!backgroundReply) {
-@@ -8158,13 +8202,13 @@ finishPhoto=async(context,image)=>{
+@@ -8158,13 +8214,13 @@ finishPhoto=async(context,image)=>{
    if (item.sample||context.kind!=='selfie') return item;
    const p=context.p,index=context.index,lines=getState(index).chats[p.id]||[];
    const line=lines.find(entry=>entry.photo===item.id);
@@ -242,7 +317,7 @@ index 98c26ef..b6da1a5 100644
      save();
    } catch(error) {notify('照片已存入，配文暂未收到 · '+error.message);}
    return item;
-@@ -8393,7 +8437,7 @@ function bootPhoneExperience() {
+@@ -8393,7 +8449,7 @@ function bootPhoneExperience() {
    submit['os-location-form']=form=>{
      const id=formValue(form,'place'),place=places.get(id);
      if(!place)return;
@@ -251,7 +326,7 @@ index 98c26ef..b6da1a5 100644
      if(form.dataset.group){
        const group=groupById(form.dataset.group);
        if(!group)return;
-@@ -8436,7 +8480,7 @@ function bootPhoneExperience() {
+@@ -8436,7 +8492,7 @@ function bootPhoneExperience() {
          if(state.cash<amount)throw Error('余额不足，未扣款。');
          const previous={cash:state.cash,affinity:state.affinity,groupPayments:state.groupPayments};
          state.cash-=amount;
@@ -260,7 +335,7 @@ index 98c26ef..b6da1a5 100644
          state.affinity={...state.affinity};
          for(const id of ids)state.affinity[id]=Math.min(100,(state.affinity[id]||0)+1);
          if(!save()) {
-@@ -9291,7 +9335,7 @@ function renderLife() {
+@@ -9291,7 +9347,7 @@ function renderLife() {
      content='<div class="life-sub"><h3>便民委托</h3><span>随位置与时段推荐</span></div>'+lifeVisibleJobs().map(job=>
        '<article class="life-post life-job"><div class="life-meta"><span>'+esc(lifePlace(job.placeId))+'</span><strong>'+money(job.pay)+'</strong></div>'+
        '<small class="life-job-publisher">'+esc(knownPeople().find(p=>p.id===job.personId)?.name||job.publisher)+'</small>'+
@@ -269,7 +344,7 @@ index 98c26ef..b6da1a5 100644
        lifeJobStatus(job)+'</article>').join('');
    }
    return '<div class="life-screen">'+banner+tabs+'<div class="life-content" aria-busy="'+busy+'">'+content+'</div></div>';
-@@ -9697,7 +9741,7 @@ function endSocialCall(back=true) {
+@@ -9697,7 +9753,7 @@ function endSocialCall(back=true) {
    stopJinheSpeech();
    socialStop(call.id);
    if (call.connectedAt&&state===call.current) {
@@ -278,7 +353,7 @@ index 98c26ef..b6da1a5 100644
        duration:socialCallSeconds(call),text:(call.video?'视频':'语音')+'通话 '+socialCallDuration(socialCallSeconds(call)),transcript:call.lines.slice(0,80)});
      save();
    }
-@@ -9863,7 +9907,7 @@ async function socialSendGift(form) {
+@@ -9863,7 +9919,7 @@ async function socialSendGift(form) {
    try {
      if (osIsHosted()) await hostWrite({type:'gift-create',requestId:id,id:p.id,amount,kind});
      else if (!phoneGifts().some(gift=>gift.id===id)) {

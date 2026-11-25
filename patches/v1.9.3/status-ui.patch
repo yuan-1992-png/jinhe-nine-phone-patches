@@ -1,5 +1,5 @@
-diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\a_status-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\b_status-ui.html"
-index 78d1ef0..157a74a 100644
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-date\\tmpdiff\\a_status-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-date\\tmpdiff\\b_status-ui.html"
+index 78d1ef0..2a6ea8b 100644
 --- a/status-ui.html
 +++ b/status-ui.html
 @@ -949,7 +949,7 @@
@@ -11,7 +11,18 @@ index 78d1ef0..157a74a 100644
        <span class="csg-chip" data-bind="lock_badge">🎲 可以偶遇新角色</span>
      </div>
  
-@@ -2134,7 +2134,7 @@ function requestsCountyPrivateMode(text) {
+@@ -2127,14 +2127,17 @@ function requestsCountyPrivateMode(text) {
+         currentPlaceName = scene.location_name || '';
+         updateMap();
+         setText('location_name', '📍 ' + [textOr(scene.location_name, '地点未记录'), scene.spot].filter(Boolean).join(' · '));
+-        setText('time_slot', '🕒 ' + textOr(scene.time_slot, '时间未记录'));
++        const sceneDate = /^\d{4}-\d{2}-\d{2}$/.test(scene.date || '')
++          ? scene.date
++          : new Date(Date.UTC(2026, 0, 1 + Math.max(1, Math.round(Number(scene.day) || 1)))).toISOString().slice(0, 10);
++        setText('time_slot', '🕒 ' + (scene.time_slot ? sceneDate + ' ' + scene.time_slot : '时间未记录'));
+         const present = cast.length > 0;
+         activePanel.hidden = !present;
+         emptyPanel.hidden = present;
          emptyPanel.textContent = '沿街转转，或找个人搭句话。';
          setText('lock_badge', present ? cast.length + ' 人在场' : '🎲 可以偶遇新角色');
          setText('cash', readNumber(player.cash) ?? '—');

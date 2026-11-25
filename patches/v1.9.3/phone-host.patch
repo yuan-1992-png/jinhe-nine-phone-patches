@@ -1,7 +1,16 @@
-diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\a_phone-host.js" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-port\\diff_tmp\\b_phone-host.js"
-index fe268c0..49c60df 100644
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-date\\tmpdiff\\a_phone-host.js" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\v193-date\\tmpdiff\\b_phone-host.js"
+index fe268c0..a2bb00a 100644
 --- a/phone-host.js
 +++ b/phone-host.js
+@@ -526,7 +526,7 @@ async function relayModelIds(config = {}) {
+ }
+ 
+ // Tavern Helper card script. The build embeds its single-page UI in the payload marker.
+-const phoneHtml="__PHONE_HTML_PLACEHOLDER__";
++const phoneHtml=__PHONE_HTML_PLACEHOLDER__;
+ const hostPage=window.parent;
+ const hostDocument=hostPage.document;
+ const namespace='__jinhePhoneHost142';
 @@ -562,6 +562,218 @@ function phoneStorageKey(scope) {
    return key;
  }
