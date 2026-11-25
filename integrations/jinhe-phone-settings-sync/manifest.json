@@ -1,0 +1,10 @@
+{
+  "display_name": "九号机设置跨端同步（本机/远程分档）",
+  "loading_order": 10,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "version": "1.0.0",
+  "author": "Local (Zero-Invasion Sync)",
+  "auto_update": false
+}
