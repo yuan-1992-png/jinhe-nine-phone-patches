@@ -1,0 +1,126 @@
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\a_phone-ui.html" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\b_phone-ui.html"
+index d0b000e..f6a8262 100644
+--- "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\a_phone-ui.html"
++++ "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\b_phone-ui.html"
+@@ -3764,19 +3764,29 @@ function toggleLocate(id) {
+ function deletePlaceDialog(id) {
+   const place = places.get(id);
+   if (!place?.custom) return;
+-  modal('删掉这个地点',`<p class="hint">把「${esc(place.name)}」从地图上删掉？酒馆里的剧情和存档不受影响，想加还能再加。</p>
++  const owned = Boolean(state.properties?.[id]);
++  const tip = owned ? '该地点已买断为自有物业，删掉地图点位后仍会保留自有物业。'
++    : state.customPropertyOffers?.[id] ? '把「' + esc(place.name) + '」从地图和钱包可买断列表里一并删掉？'
++    : '把「' + esc(place.name) + '」从地图上删掉？酒馆里的剧情和存档不受影响，想加还能再加。';
++  modal('删掉这个地点',`<p class="hint">${tip}</p>
+     <div class="buttons">${btn('删掉','place-delete-confirm',{id},'primary')}${btn('留下','close')}</div>`);
+ }
+-function removeCustomPlace(id) {
++async function removeCustomPlace(id, button) {
+   if (!places.get(id)?.custom) return;
+-  customPlaces = customPlaces.filter(place=>place.id !== id);
+-  places.delete(id);
+-  if (destination === id) destination = '';
+-  if (placingPlace === id) placingPlace = '';
+-  saveCustomPlaces();
+-  closeModal();
+-  render(true);
+-  notify('已从地图上删掉');
++  if (button) button.disabled = true;
++  try {
++    if (jinheBridge && state.customPropertyOffers?.[id] && !state.properties?.[id]) {
++      await hostWrite({type:'unregister-property',assetType:id});
++    }
++    customPlaces = customPlaces.filter(place=>place.id !== id);
++    places.delete(id);
++    if (destination === id) destination = '';
++    if (placingPlace === id) placingPlace = '';
++    saveCustomPlaces();
++    closeModal();
++    render(true);
++    notify('已从地图上删掉');
++  } finally { if (button) button.disabled = false; }
+ }
+ const chatProviders = {openai:'OpenAI 兼容',claude:'Claude 原生',gemini:'Gemini 原生'};
+ const imageProviders = {openai:'OpenAI 兼容生图',silicon:'硅基流动',sd:'SD WebUI / Forge',novel:'NovelAI',baibai:'柏宝绘 · 本地 ComfyUI',comfy:'本地 ComfyUI（独立）'};
+@@ -4445,7 +4455,7 @@ const actions = {
+   'place-list-property': ({id}) => listMapProperty(id),
+   'place-locate': ({id}) => toggleLocate(id),
+   'place-delete': ({id}) => deletePlaceDialog(id),
+-  'place-delete-confirm': ({id}) => removeCustomPlace(id),
++  'place-delete-confirm': ({id}, button) => removeCustomPlace(id, button),
+   destination: ({id}) => {destination=id;render(true);},
+   'route-draft': ({id}) => setDraft(`我从${placeTitle()}出发，骑车去${places.get(id).name}。`),
+   'settings-tab': ({page}) => {settingsTab=page;render(true);},
+@@ -6579,7 +6589,7 @@ function bootHostClient() {
+   actions['list-property']=()=>{
+     const offers=Object.entries({...state.customPropertyOffers,...source.assetTypes});
+     const group=business=>offers.filter(([,offer])=>Boolean(offer.business)===business).map(([id,offer])=>{
+-      const action=state.properties?.[id]?'已拥有':btn('买断','quote-property',{id});
++      const action=state.properties?.[id]?'已拥有':(id.startsWith('custom_')&&jinheBridge?btn('撤回','unregister-property',{id})+' ':'')+btn('买断','quote-property',{id});
+       return `<div class="card ledger-row" data-property-search="${esc(offer.property)}"><div><strong>${esc(offer.property)}</strong><br><small>${money(offer.price)}</small></div><div>${action}</div></div>`;
+     }).join('');
+     modal('买断物业',`<div class="stack"><label>搜索物业<input id="buy-property-search" type="search"></label>
+@@ -6591,6 +6601,16 @@ function bootHostClient() {
+       }
+     });
+   };
++  actions['unregister-property']=async({id},button)=>{
++    if (!jinheBridge||!state.customPropertyOffers?.[id]||state.properties?.[id]) return;
++    if (button) button.disabled=true;
++    try {
++      await hostWrite({type:'unregister-property',assetType:id});
++      render(true);
++      actions['list-property']();
++      notify('已从钱包撤回该挂牌');
++    } finally { if (button) button.disabled=false; }
++  };
+   actions['quote-property']=({id})=>{
+     const catalog={...state.customPropertyOffers,...source.assetTypes};
+     if (!Object.hasOwn(catalog,id)||state.properties?.[id]) return;
+@@ -8512,7 +8532,45 @@ function bootPhoneExperience() {
+     const focused=document.activeElement?.closest('form');
+     if(state===current&&!focused&&!$('modal').open) render();else osSyncIsland();
+   };
+-  window.openJinheConversation=id=>{osSetLock(false);openPage(isFriend(id)?'chat':'profile',id);};
++  function jinheApplySeseLines(nine, additions) {
++  const chats = nine.chats ||= {};
++  const changed = [];
++  for (const {id, lines, times=[]} of additions) {
++    const existing = chats[id] || [];
++    const ids = new Set(existing.map(line => line.id));
++    const appended = lines.filter(line => !ids.has(line.id));
++    const byId = new Map(times.map(item => [item.id,item.storyTime]));
++    let updated = false;
++    const retained = existing.map(line => {
++      const key = line.id || JSON.stringify([line.role,line.at,line.text?.slice(0,160)]);
++      const storyTime = byId.get(key);
++      if (!storyTime || line.storyTime === storyTime) return line;
++      updated = true;
++      return {...line,storyTime};
++    });
++    if (!updated && !appended.length) continue;
++    changed.push([id,chats[id]]);
++    chats[id] = appended.length ? retained.concat(appended).sort((a,b)=>(a.at||0)-(b.at||0)) : retained;
++  }
++  return changed;
++}
++window.importJinheSeseLines=additions=>{
++  const archiveState=archive[0];
++  if (!archiveState) return false;
++  const changed=jinheApplySeseLines(archiveState,additions);
++  if (!changed.length) return true;
++  if (!save()) {
++    for (const [id,lines] of changed) {
++      if (lines) archiveState.chats[id]=lines;
++      else delete archiveState.chats[id];
++    }
++    return false;
++  }
++  const focused=document.activeElement;
++  if (['contacts','chat'].includes(section)&&!$('modal').open&&!focused?.closest('form')) render();
++  return true;
++};
++window.openJinheConversation=id=>{osSetLock(false);openPage(isFriend(id)?'chat':'profile',id);};
+   if(osIsHosted())jinheBridge.setChatConfig?.({...settings.chat});
+   if (osIsHosted()) jinheBridge.takeInbox?.().then(window.receiveJinheInbox).catch(error=>notify(error.message));
+   window.addEventListener('pagehide',()=>{osAlive=false;clearInterval(osLiveTimer);clearTimeout(osBannerTimer);},{once:true});

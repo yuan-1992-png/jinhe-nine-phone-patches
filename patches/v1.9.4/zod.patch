@@ -1,0 +1,29 @@
+diff --git "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\a_zod.js" "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\b_zod.js"
+index d814fc6..71bb3ad 100644
+--- "a/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\a_zod.js"
++++ "b/C:\\Users\\Administrator\\.gemini\\antigravity\\brain\\fe0f518a-5ce9-47c4-b896-0a3bf107c576\\scratch\\diff_v194\\b_zod.js"
+@@ -1228,7 +1228,7 @@ export function createCountySchema(z, presetPeople, countyOpeningProfile, county
+           ['gift','shared','support','expense','property','lease'].includes(line?.kind)).slice(0,9) : [], z.array(AccountLine)).optional(),
+       }).optional(),
+       cash: ClampedNumber(0, 999999999999, 1280).describe('兜里零花钱（元），可请喝奶茶、开台球VIP包厢、打赏主播、买车买房包养小妹'),
+-      stamina: ClampedNumber(0, 100, 100).describe('精力/腰力值 0-100'),
++      stamina: z.preprocess(()=>100,ClampedNumber(0,100,100)).describe('腰力无限，存储值为100'),
+       items: StringList(['华子半包', '九号改装电驴钥匙', '草莓味超薄001一盒']).describe('随身撩妹道具'),
+     }),
+ 
+@@ -3712,6 +3712,15 @@ $(() => {
+           throw Error('同名物业已登记，请换一个地点名。');
+         state.player.custom_property_offers = {...listings, [id]:{property:name, price, business}};
+       }
++    } else if (action.type==='unregister-property') {
++      const id = action.assetType;
++      if (typeof id !== 'string' || !/^custom_[a-z0-9-]{1,64}$/.test(id))
++        throw Error('无效的自定义物业编号。');
++      if (state.player.properties?.[id])
++        throw Error('该物业已买断为自有物业，无法撤回挂牌。');
++      const listings = { ...(state.player.custom_property_offers ?? {}) };
++      delete listings[id];
++      state.player.custom_property_offers = listings;
+     } else if (action.type==='buy-property') {
+       const problem=countyPurchaseProblem(before.player,action.assetType);
+       if (problem) throw Error(problem);
